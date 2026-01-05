@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Browser Playground</title>
+    
+    <!-- 
+       LIBRARIES
+       1. Skulpt (Python Runtime) - Required to run the code.
+    -->
+    <script src="skulpt.js" type="text/javascript"></script>
+    <script src="skulpt-stdlib.js" type="text/javascript"></script>
+
+    <style>
+        /* --- GENERAL LAYOUT --- */
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e; /* VS Code Dark */
+            color: #d4d4d4;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* --- LEFT PANEL: EDITOR --- */
+        #editor-wrapper {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #333;
+            background-color: #1e1e1e;
+        }
+
+        .panel-header {
+            background-color: #252526;
+            padding: 10px 15px;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #9cdcfe;
+            border-bottom: 1px solid #333;
+            flex-shrink: 0; 
+        }
+
+        /* --- CUSTOM EDITOR STYLES (Overlay Method) --- */
+        
+        #custom-editor-container {
+            display: flex;
+            flex-grow: 1;
+            position: relative;
+            height: 100%;
+            overflow: hidden; 
+        }
+
+        #line-numbers {
+            width: 50px;
+            height: 100%;
+            background-color: #1e1e1e;
+            border-right: 1px solid #333;
+            text-align: right;
+            padding: 15px 10px 15px 0; 
+            box-sizing: border-box;
+            color: #606060;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow: hidden;
+            flex-shrink: 0;
+            user-select: none;
+        }
+
+        #code-overlay-wrapper {
+            flex-grow: 1;
+            position: relative;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #highlighting, #editing {
+            margin: 0;
+            padding: 15px; 
+            border: 0;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            box-sizing: border-box;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            tab-size: 4;
+            white-space: pre; 
+            overflow: auto;
+        }
+
+        #highlighting {
+            z-index: 1;
+            background-color: #1e1e1e;
+            pointer-events: none; 
+        }
+        #highlighting code {
+            font-family: inherit;
+        }
+
+        #editing {
+            z-index: 2;
+            color: transparent;       
+            background: transparent;  
+            caret-color: #d4d4d4;     
+            outline: none;
+            resize: none;             
+        }
+
+        /* --- SYNTAX HIGHLIGHTING COLORS --- */
+        .token-keyword  { color: #569cd6; } 
+        .token-string   { color: #ce9178; } 
+        .token-fstring  { color: #f44747; } 
+        .token-comment  { color: #6a9955; font-style: italic; } 
+        .token-number   { color: #b5cea8; } 
+        .token-def      { color: #dcdcaa; } 
+        .token-decorator{ color: #c586c0; } 
+
+        /* --- RIGHT PANEL: OUTPUT --- */
+        #output-wrapper {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: #1e1e1e;
+        }
+
+        .toolbar {
+            padding: 10px 15px;
+            background-color: #252526;
+            border-bottom: 1px solid #333;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            border: none;
+            padding: 8px 16px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .btn-run { background-color: #0e639c; color: white; }
+        .btn-run:hover { background-color: #1177bb; }
+        .btn-run:active { transform: translateY(1px); }
+        .btn-clear { background-color: #3c3c3c; color: #cccccc; }
+        .btn-clear:hover { background-color: #4a4a4a; }
+
+        #output {
+            flex-grow: 1;
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            color: #cccccc;
+            background-color: #1e1e1e;
+        }
+
+        .output-error { color: #f48771; }
+        .output-success { color: #4ec9b0; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
+        
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #424242; }
+        ::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <!-- LEFT PANEL: Custom Editor -->
+    <div id="editor-wrapper">
+        <div class="panel-header">
+            <span>main.py</span>
+            <span style="font-size: 11px; color: #666;">Python 3 (Skulpt)</span>
+        </div>
+        
+        <div id="custom-editor-container">
+            <div id="line-numbers"></div>
+            
+            <div id="code-overlay-wrapper">
+                <pre id="highlighting" aria-hidden="true"><code id="highlighting-content"></code></pre>
+                
+                <!-- NOTE: onkeydown changed to handleKeyDown -->
+                <textarea id="editing" spellcheck="false" 
+                          oninput="update(this.value); sync_scroll(this);" 
+                          onscroll="sync_scroll(this);" 
+                          onkeydown="handleKeyDown(event)">import random
+import datetime
+
+def greet(name):
+    """
+    A simple function to greet the user
+    and tell them the time.
+    """
+    now = datetime.datetime.now()
+    # F-string example (Red color)
+    time_str = f"{now.hour}:{now.minute}" 
+    return f"Hello, {name}! It is {time_str}"
+
+# Main execution
+print("System initialized.")
+print("-" * 30)
+
+# Loop example
+print("Rolling dice 3 times:")
+for i in range(1, 4):
+    roll = random.randint(1, 6)
+    print("  Roll " + str(i) + ": " + str(roll))
+
+print("-" * 30)
+print(greet("Developer"))</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: Output -->
+    <div id="output-wrapper">
+        <div class="toolbar">
+            <button class="btn-run" onclick="runCode()">&#9658; Run Code</button>
+            <button class="btn-clear" onclick="clearOutput()">Clear Output</button>
+             <button class="btn-clear" onclick="shareCode()" style="background-color: #0e639c; color: white;">Share</button>
+        </div>
+        <div id="output"></div>
+    </div>
+
+</div>
+
+<!-- JAVASCRIPT LOGIC -->
+<script>
+    /* -----------------------------------------------------------
+       1. EDITOR LOGIC (Lexer, Overlay, Sync)
+       ----------------------------------------------------------- */
+    const editing = document.getElementById('editing');
+    const highlightingContent = document.getElementById('highlighting-content');
+    const highlighting = document.getElementById('highlighting');
+    const lineNumbers = document.getElementById('line-numbers');
+
+    // Initialize Editor on Load
+    update(editing.value);
+
+    // Update Function (Run on input)
+    function update(text) {
+        let result_text = text;
+        if(text[text.length-1] == "\n") {
+            result_text += " "; 
+        }
+        highlightingContent.innerHTML = highlightPython(result_text);
+        updateLineNumbers(text);
+    }
+
+    // Line Number Generator
+    function updateLineNumbers(text) {
+        const lines = text.split('\n').length;
+        lineNumbers.innerHTML = Array(lines)
+            .fill(0)
+            .map((_, i) => i + 1)
+            .join('<br>');
+    }
+
+    // Scroll Synchronization
+    function sync_scroll(element) {
+        highlighting.scrollTop = element.scrollTop;
+        highlighting.scrollLeft = element.scrollLeft;
+        lineNumbers.scrollTop = element.scrollTop;
+    }
+
+    // KEY HANDLER: Tab and Enter (Smart Indentation)
+    function handleKeyDown(e) {
+        const textarea = e.target;
+        
+        // --- HANDLE TAB (Insert 4 spaces) ---
+        if(e.key == "Tab") {
+            e.preventDefault();
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const val = textarea.value;
+            
+            textarea.value = val.substring(0, start) + "    " + val.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + 4;
+            
+            update(textarea.value);
+        }
+        // --- HANDLE ENTER (Smart Indent) ---
+        else if (e.key == "Enter") {
+            e.preventDefault();
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const val = textarea.value;
+
+            // 1. Get the current line up to the cursor
+            // Last index of \n before cursor gives us the start of the line
+            const lineStart = val.lastIndexOf('\n', start - 1);
+            const currentLine = val.substring(lineStart + 1, start);
+
+            // 2. Calculate indentation (spaces at start)
+            const match = currentLine.match(/^\s*/);
+            const currentIndent = match ? match[0] : "";
+            
+            // 3. Check if we need to add EXTRA indentation (if line ends with :)
+            let extraIndent = "";
+            if (currentLine.trimEnd().endsWith(":")) {
+                extraIndent = "    ";
+            }
+
+            const insertion = "\n" + currentIndent + extraIndent;
+
+            // 4. Insert newline + indent
+            textarea.value = val.substring(0, start) + insertion + val.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
+            
+            update(textarea.value);
+            // Ensure pre-layer scrolls with the textarea
+            sync_scroll(textarea);
+        }
+    }
+
+    // Helper: Unescape HTML
+    function unescapeHtml(text) {
+        return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    }
+
+    // Syntax Highlighter (Regex Lexer)
+    function highlightPython(code) {
+        code = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const tokenRegex = /((?:#|&quot;&quot;&quot;|''').*?$)|((?:\b[fF])?(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'))|\b(def|class|import|from|return|if|else|elif|while|for|in|print|try|except|raise|True|False|None|and|or|not|is|self)\b|(\b\d+\b)|(@\w+)/gm;
+        
+        return code.replace(tokenRegex, function(match, comment, string, keyword, number, decorator) {
+            if (comment) return `<span class="token-comment">${comment}</span>`;
+            
+            if (string) {
+                if (string.startsWith('f') || string.startsWith('F')) {
+                    const formattedString = string.replace(/\{.*?\}/g, function(interpolation) {
+                        const innerContent = interpolation.slice(1, -1);
+                        const rawInner = unescapeHtml(innerContent);
+                        const highlightedInner = highlightPython(rawInner);
+                        return `<span style="color: #d4d4d4;">{${highlightedInner}}</span>`;
+                    });
+                    return `<span class="token-fstring">${formattedString}</span>`;
+                }
+                return `<span class="token-string">${string}</span>`;
+            }
+
+            if (keyword) return `<span class="token-keyword">${keyword}</span>`;
+            if (number) return `<span class="token-number">${number}</span>`;
+            if (decorator) return `<span class="token-decorator">${decorator}</span>`;
+            
+            return match;
+        });
+    }
+
+    /* -----------------------------------------------------------
+       2. OUTPUT & RUN LOGIC (Skulpt)
+       ----------------------------------------------------------- */
+    var outputDiv = document.getElementById("output");
+
+    function logToConsole(text, isError) {
+        var span = document.createElement('span');
+        span.innerText = text;
+        if (isError) span.className = 'output-error';
+        outputDiv.appendChild(span);
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+
+    function clearOutput() {
+        outputDiv.innerHTML = "";
+    }
+
+    function outf(text) { 
+        logToConsole(text, false);
+    } 
+
+    function builtinRead(x) {
+        if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
+            throw "File not found: '" + x + "'";
+        return Sk.builtinFiles["files"][x];
+    }
+
+    function runCode() { 
+        var prog = document.getElementById("editing").value; 
+        
+        clearOutput();
+        
+        Sk.pre = "output";
+        Sk.configure({
+            output: outf, 
+            read: builtinRead,
+            __future__: Sk.python3
+        }); 
+
+        var myPromise = Sk.misceval.asyncToPromise(function() {
+            return Sk.importMainWithBody("<stdin>", false, prog, true);
+        });
+
+        myPromise.then(function(mod) {
+            var successMsg = document.createElement('span');
+            successMsg.className = 'output-success';
+            successMsg.innerText = "\n>>> Program finished successfully.";
+            outputDiv.appendChild(successMsg);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        },
+        function(err) {
+            logToConsole("\n" + err.toString(), true);
+        });
+    } 
+
+
+/* -----------------------------------------------------------
+   3. SHARING LOGIC (URL Arguments & Base64)
+   ----------------------------------------------------------- */
+
+function shareCode() {
+    // 1. Get code from the editor
+    const code = document.getElementById("editing").value;
+    
+    // 2. Encode to Base64 (using btoa + encodeURIComponent for Unicode support)
+    const base64Code = btoa(encodeURIComponent(code));
+    
+    // 3. Create the new URL
+    const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?code=' + base64Code;
+    
+    // 4. Update browser address bar and copy to clipboard
+    window.history.pushState({path: newUrl}, '', newUrl);
+    navigator.clipboard.writeText(newUrl).then(() => {
+        alert("Sharable link copied to clipboard!");
+    });
+}
+
+// Logic to run automatically when the page opens
+window.addEventListener('load', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeParam = urlParams.get('code');
+
+    if (codeParam) {
+        try {
+            // Decode the Base64 string
+            const decodedCode = decodeURIComponent(atob(codeParam));
+            
+            // Set the value in the textarea
+            const editor = document.getElementById("editing");
+            editor.value = decodedCode;
+            
+            // CRITICAL: Call the existing update function to sync highlighting and line numbers
+            update(decodedCode);
+        } catch (e) {
+            console.error("Failed to decode shared code:", e);
+        }
+    }
+});
+
+</script>
+
+</body>
+</html>

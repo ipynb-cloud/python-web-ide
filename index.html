@@ -216,7 +216,6 @@
             <button class="btn-run" onclick="runCode()">&#9658; Run Code</button>
             <button class="btn-clear" onclick="clearOutput()">Clear Output</button>
              <button class="btn-clear" onclick="shareCode()" style="background-color: #0e639c; color: white;">Share</button>
-            <button class="btn-submit" onclick="submitToMoodle()">Submit Solution</button>
         </div>
         <div id="output"></div>
     </div>
@@ -244,6 +243,9 @@
         }
         highlightingContent.innerHTML = highlightPython(result_text);
         updateLineNumbers(text);
+
+        // AUTO-SYNC: Every edit sends a message to the Moodle textarea
+        syncWithMoodle(text);
     }
 
     // Line Number Generator
@@ -406,13 +408,12 @@
    3. SHARING LOGIC (URL Arguments & Base64)
    ----------------------------------------------------------- */
 
-function submitToMoodle() {
-    const code = document.getElementById("editing").value;
-    window.parent.postMessage({
-        type: 'moodle-submit-code',
-        content: code
-    }, '*');
-}
+    function syncWithMoodle(code) {
+        window.parent.postMessage({
+            type: 'moodle-submit-code',
+            content: code
+        }, '*');
+    }
     
 function shareCode() {
     // 1. Get code from the editor

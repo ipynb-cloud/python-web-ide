@@ -6,8 +6,8 @@
     <title>Python Browser Playground</title>
     
     <!-- CDN LIBRARIES -->
-    <script src="skulpt.js" type="text/javascript"></script>
-    <script src="skulpt-stdlib.js" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
 
     <style>
         /* --- GENERAL LAYOUT --- */
@@ -25,6 +25,19 @@
             display: flex;
             height: calc(100vh - 30px); /* Leave space for footer */
             width: 100vw;
+        }
+
+        /* --- RESPONSIVE LAYOUT (Mobile) --- */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            #editor-wrapper, #output-wrapper {
+                width: 100% !important;
+                height: 50% !important;
+                border-right: none;
+                border-bottom: 1px solid #333;
+            }
         }
 
         /* --- LEFT PANEL: EDITOR --- */
@@ -218,7 +231,7 @@ hello()</textarea>
         <div class="toolbar">
             <button class="btn-run" onclick="runCode()">► Run Code</button>
             <button class="btn-clear" onclick="clearOutput()">Clear Output</button>
-            <button class="btn-submit" onclick="submitToMoodle()">Sync Changes</button>
+            <button class="btn-submit" onclick="submitToMoodle()">Copy Code</button>
         </div>
         <div id="output"></div>
     </div>
@@ -232,7 +245,8 @@ hello()</textarea>
 <script>
     // --- DYNAMIC CONFIGURATION ---
     const urlParams = new URLSearchParams(window.location.search);
-    const QUESTION_ID = urlParams.get('id') || "default_question"; 
+    const QUESTION_ID = urlParams.get('id'); 
+    const MODE = urlParams.get('mode'); // Get 'mode' param (e.g. ?id=Q1&mode=exam)
 
     const editing = document.getElementById('editing');
     const highlightingContent = document.getElementById('highlighting-content');
@@ -240,9 +254,9 @@ hello()</textarea>
     const lineNumbers = document.getElementById('line-numbers');
     const syncWarning = document.getElementById('sync-warning');
 
-    const storageKey = "python_editor_" + QUESTION_ID;
+    const storageKey = QUESTION_ID ? "python_editor_" + QUESTION_ID : null;
+    const dirtyKey = QUESTION_ID ? "python_dirty_" + QUESTION_ID : null;
     
-    // Track if current content is dirty (unsynced)
     let isDirty = false;
 
     function update(text) {
@@ -251,18 +265,24 @@ hello()</textarea>
         highlightingContent.innerHTML = highlightPython(result_text);
         updateLineNumbers(text);
         
-        // Show warning as soon as a change is made
         setDirty(true);
         
-        localStorage.setItem(storageKey, text);
+        if (storageKey) {
+            localStorage.setItem(storageKey, text);
+        }
     }
 
     function setDirty(dirty) {
         isDirty = dirty;
-        if (dirty) {
+        // Only show visual warning if content is dirty AND we are in exam mode
+        if (dirty && MODE === 'exam') {
             syncWarning.classList.add('visible');
         } else {
             syncWarning.classList.remove('visible');
+        }
+
+        if (dirtyKey) {
+            localStorage.setItem(dirtyKey, dirty ? "true" : "false");
         }
     }
 
@@ -289,11 +309,15 @@ hello()</textarea>
             e.preventDefault();
             const start = textarea.selectionStart;
             const val = textarea.value;
+            
+            // --- FIX: Corrected Logic ---
             const lineStart = val.lastIndexOf('\n', start - 1);
-            const currentLine = val.substring(lineStart + 1, start);
-            const match = currentLine.match(/^\s*/);
+            const currentLineText = val.substring(lineStart + 1, start);
+
+            const match = currentLineText.match(/^\s*/);
             const currentIndent = match ? match[0] : "";
-            let extraIndent = currentLine.trimEnd().endsWith(":") ? "    " : "";
+            let extraIndent = currentLineText.trimEnd().endsWith(":") ? "    " : "";
+            
             const insertion = "\n" + currentIndent + extraIndent;
             textarea.value = val.substring(0, start) + insertion + val.substring(textarea.selectionEnd);
             textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
@@ -321,13 +345,20 @@ hello()</textarea>
         outputDiv.appendChild(span);
         outputDiv.scrollTop = outputDiv.scrollHeight;
     } 
+    
     function builtinRead(x) {
         if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) throw "Err";
         return Sk.builtinFiles["files"][x];
     }
+
     function runCode() { 
         outputDiv.innerHTML = "";
-        Sk.configure({ output: outf, read: builtinRead, __future__: Sk.python3 }); 
+        Sk.configure({ 
+            output: outf, 
+            read: builtinRead, 
+            __future__: Sk.python3 
+        }); 
+        
         Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, editing.value, true))
         .then(() => {
             var s = document.createElement('span');
@@ -348,11 +379,40 @@ hello()</textarea>
         window.parent.postMessage({ type: 'moodle-submit-code', content: code }, '*');
     }
 
-    function submitToMoodle() {
-        syncWithMoodle(editing.value);
+    async function submitToMoodle() {
+        const code = editing.value;
+        syncWithMoodle(code);
         
-        // Hide warning since content is now synced
+        // --- IMPROVED CLIPBOARD COPY ---
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(code);
+            } catch (err) {
+                fallbackCopy(code);
+            }
+        } else {
+            fallbackCopy(code);
+        }
+
         setDirty(false);
+        
+        const btn = document.querySelector('.btn-submit');
+        const oldText = btn.innerText;
+        btn.innerText = "✓ Synced & Copied!";
+        setTimeout(() => btn.innerText = oldText, 2000);
+    }
+    
+    function fallbackCopy(text) {
+        const tempInput = document.createElement("textarea");
+        tempInput.value = text;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try {
+            document.execCommand("copy");
+        } catch (err) {
+            console.warn("Clipboard copy failed");
+        }
+        document.body.removeChild(tempInput);
     }
 
     // LOAD SAVED WORK
@@ -363,7 +423,6 @@ hello()</textarea>
                 const decodedCode = decodeURIComponent(atob(codeParam));
                 editing.value = decodedCode;
                 update(decodedCode);
-                // When loading from URL, it's considered synced/clean initially
                 setDirty(false);
                 return;
             } catch (e) {
@@ -371,15 +430,25 @@ hello()</textarea>
             }
         }
 
-        const savedCode = localStorage.getItem(storageKey);
-        if (savedCode && savedCode.trim() !== "") {
-            editing.value = savedCode;
-            update(savedCode);
-            // After loading local storage, it's considered synced/clean
-            setDirty(false);
+        if (storageKey) {
+            const savedCode = localStorage.getItem(storageKey);
+            const savedDirty = localStorage.getItem(dirtyKey);
+
+            if (savedCode && savedCode.trim() !== "") {
+                editing.value = savedCode;
+                update(savedCode);
+                if (savedDirty !== null) {
+                    setDirty(savedDirty === "true");
+                } else {
+                    setDirty(false);
+                }
+            } else {
+                update(editing.value);
+                setDirty(false);
+            }
         } else {
             update(editing.value);
-            setDirty(false); // Initial default state is clean
+            setDirty(false);
         }
     });
 </script>
@@ -390,11 +459,17 @@ hello()</textarea>
     const textareaSelector = 'textarea[name*="_answer"]'; 
     window.addEventListener('message', function(event) {
         if (event.data && event.data.type === 'moodle-submit-code') {
-            const targetTextArea = document.querySelector(textareaSelector);
-            if (targetTextArea) {
+            const textareas = document.querySelectorAll(textareaSelector);
+            
+            // SECURITY CHECK: Only sync if exactly one textarea is found 
+            // to prevent overwriting wrong fields in ambiguous layouts.
+            if (textareas.length === 1) {
+                const targetTextArea = textareas[0];
                 targetTextArea.value = event.data.content;
                 targetTextArea.dispatchEvent(new Event('change', { bubbles: true }));
                 targetTextArea.dispatchEvent(new Event('input', { bubbles: true }));
+            } else if (textareas.length > 1) {
+                console.warn("Multiple potential answer textareas found. Ignoring sync to avoid ambiguity.");
             }
         }
     });

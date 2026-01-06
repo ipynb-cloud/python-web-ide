@@ -414,6 +414,8 @@
             content: code
         }, '*');
     }
+
+    
     
 function shareCode() {
     // 1. Get code from the editor
@@ -453,6 +455,17 @@ window.addEventListener('load', function() {
         }
     }
 });
+
+// Handle incoming code from Moodle (Initial Load)
+window.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'moodle-initial-load') {
+            const initialCode = event.data.content;
+            if (initialCode && initialCode.trim() !== "") {
+                editing.value = initialCode;
+                update(initialCode);
+            }
+        }
+    });
 
 </script>
 

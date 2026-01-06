@@ -8,14 +8,14 @@
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
 
     <style>
-        /* --- GENERAL LAYOUT (Light Theme) --- */
+        /* --- GENERAL LAYOUT (Dark Theme) --- */
         body, html {
             height: 100%;
             margin: 0;
             padding: 0;
             font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #ffffff;
-            color: #333333;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
             overflow: hidden;
         }
 
@@ -34,7 +34,7 @@
                 width: 100% !important;
                 height: 50% !important;
                 border-right: none;
-                border-bottom: 1px solid #e0e0e0;
+                border-bottom: 1px solid #333;
             }
         }
 
@@ -44,19 +44,20 @@
             height: 100%;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid #e0e0e0;
-            background-color: #ffffff;
+            border-right: 1px solid #333;
+            background-color: #1e1e1e;
         }
 
         .panel-header {
-            background-color: #f3f3f3;
+            /* Lighter grey for surround/header */
+            background-color: #333333;
             padding: 10px 15px;
             font-size: 13px;
             text-transform: uppercase;
             letter-spacing: 1px;
-            color: #444;
+            color: #cccccc;
             font-weight: 600;
-            border-bottom: 1px solid #e0e0e0;
+            border-bottom: 1px solid #444;
             flex-shrink: 0; 
             display: flex;
             justify-content: space-between;
@@ -74,12 +75,12 @@
         #line-numbers {
             width: 50px;
             height: 100%;
-            background-color: #f9f9f9;
-            border-right: 1px solid #e0e0e0;
+            background-color: #1e1e1e;
+            border-right: 1px solid #333;
             text-align: right;
             padding: 15px 10px 15px 0; 
             box-sizing: border-box;
-            color: #999;
+            color: #606060;
             font-family: "Consolas", "Monaco", "Courier New", monospace;
             font-size: 14px;
             line-height: 1.5;
@@ -115,7 +116,7 @@
 
         #highlighting {
             z-index: 1;
-            background-color: #ffffff;
+            background-color: #1e1e1e;
             pointer-events: none; 
         }
         #highlighting code { font-family: inherit; }
@@ -124,16 +125,16 @@
             z-index: 2;
             color: transparent;       
             background: transparent;  
-            caret-color: #000000;     
+            caret-color: #d4d4d4;     
             outline: none;
             resize: none;             
         }
 
-        /* --- SYNTAX HIGHLIGHTING COLORS (Light Theme) --- */
-        .token-keyword  { color: #0000ff; }       /* Blue */
-        .token-string   { color: #a31515; }       /* Red */
-        .token-comment  { color: #008000; font-style: italic; } /* Green */
-        .token-number   { color: #098658; }       /* Teal */
+        /* --- SYNTAX HIGHLIGHTING COLORS (Dark Theme) --- */
+        .token-keyword  { color: #569cd6; } 
+        .token-string   { color: #ce9178; } 
+        .token-comment  { color: #6a9955; font-style: italic; } 
+        .token-number   { color: #b5cea8; } 
 
         /* --- RIGHT PANEL: OUTPUT --- */
         #output-wrapper {
@@ -141,13 +142,14 @@
             height: 100%;
             display: flex;
             flex-direction: column;
-            background-color: #ffffff;
+            background-color: #1e1e1e;
         }
 
         .toolbar {
+            /* Lighter grey for surround/toolbar */
             padding: 10px 15px;
-            background-color: #f3f3f3;
-            border-bottom: 1px solid #e0e0e0;
+            background-color: #333333;
+            border-bottom: 1px solid #444;
             display: flex;
             gap: 10px;
             align-items: center;
@@ -161,13 +163,13 @@
             font-size: 13px;
             font-weight: 600;
             transition: all 0.2s ease;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            color: white;
         }
-        .btn-run { background-color: #0e639c; color: white; }
+        .btn-run { background-color: #0e639c; }
         .btn-run:hover { background-color: #1177bb; }
-        .btn-clear { background-color: #e0e0e0; color: #333; }
-        .btn-clear:hover { background-color: #d0d0d0; }
-        .btn-submit { background-color: #28a745; color: white; }
+        .btn-clear { background-color: #444; color: #ccc; }
+        .btn-clear:hover { background-color: #555; }
+        .btn-submit { background-color: #28a745; }
         .btn-submit:hover { background-color: #218838; }
 
         #output {
@@ -177,17 +179,17 @@
             font-size: 14px;
             white-space: pre-wrap;
             overflow-y: auto;
-            color: #333333;
-            background-color: #ffffff;
+            color: #cccccc;
+            background-color: #1e1e1e;
         }
 
-        .output-error { color: #d32f2f; }
-        .output-success { color: #008000; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
+        .output-error { color: #f48771; }
+        .output-success { color: #4ec9b0; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
         
         /* --- FOOTER WARNING --- */
         #sync-warning {
             height: 30px;
-            background-color: #d32f2f;
+            background-color: #a31515;
             color: white;
             display: flex;
             align-items: center;
@@ -207,9 +209,8 @@
         }
 
         ::-webkit-scrollbar { width: 10px; height: 10px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 5px; }
-        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #424242; }
     </style>
 </head>
 <body>
@@ -218,7 +219,7 @@
     <div id="editor-wrapper">
         <div class="panel-header">
             <span>Python Code Editor</span>
-            <span style="font-size: 11px; color: #666; text-transform: none;">(powered by Skulpt)</span>
+            <span style="font-size: 11px; color: #999; text-transform: none;">(powered by Skulpt)</span>
         </div>
         <div id="custom-editor-container">
             <div id="line-numbers">1</div>

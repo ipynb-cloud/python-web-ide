@@ -3,25 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Browser Playground</title>
+    
     <!-- CDN LIBRARIES -->
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
 
     <style>
-        /* --- GENERAL LAYOUT (Dark Theme) --- */
+        /* --- GENERAL LAYOUT --- */
         body, html {
             height: 100%;
             margin: 0;
             padding: 0;
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #1e1e1e;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #4a4a4a; 
             color: #d4d4d4;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Warning Banner */
+        #sync-warning {
+            height: 35px;
+            background-color: #a31515;
+            color: white;
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+            z-index: 100;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        #sync-warning.visible {
+            display: flex;
         }
 
         .container {
             display: flex;
-            height: calc(100vh - 30px); /* Leave space for footer */
+            flex-grow: 1;
+            padding: 15px; 
+            gap: 15px;     
+            box-sizing: border-box;
+            height: calc(100vh - 35px); 
             width: 100vw;
         }
 
@@ -29,41 +58,44 @@
         @media (max-width: 768px) {
             .container {
                 flex-direction: column;
+                overflow-y: auto;
+                height: auto;
             }
             #editor-wrapper, #output-wrapper {
                 width: 100% !important;
-                height: 50% !important;
-                border-right: none;
-                border-bottom: 1px solid #333;
+                height: 400px !important;
             }
         }
 
-        /* --- LEFT PANEL: EDITOR --- */
-        #editor-wrapper {
-            width: 50%;
-            height: 100%;
+        /* --- SHARED PANEL STYLING --- */
+        #editor-wrapper, #output-wrapper {
+            background-color: #1e1e1e;
+            border-radius: 8px; 
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid #333;
-            background-color: #1e1e1e;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            border: 1px solid #333;
         }
 
+        #editor-wrapper { width: 50%; }
+        #output-wrapper { width: 50%; }
+
         .panel-header {
-            /* Lighter grey for surround/header */
-            background-color: #333333;
+            background-color: #252526;
             padding: 10px 15px;
-            font-size: 13px;
+            font-size: 12px;
             text-transform: uppercase;
             letter-spacing: 1px;
-            color: #cccccc;
-            font-weight: 600;
-            border-bottom: 1px solid #444;
+            color: #9cdcfe;
+            border-bottom: 1px solid #333;
             flex-shrink: 0; 
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
+        /* --- EDITOR STYLES --- */
         #custom-editor-container {
             display: flex;
             flex-grow: 1;
@@ -73,7 +105,7 @@
         }
 
         #line-numbers {
-            width: 50px;
+            width: 45px;
             height: 100%;
             background-color: #1e1e1e;
             border-right: 1px solid #333;
@@ -81,7 +113,7 @@
             padding: 15px 10px 15px 0; 
             box-sizing: border-box;
             color: #606060;
-            font-family: "Consolas", "Monaco", "Courier New", monospace;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 14px;
             line-height: 1.5;
             overflow: hidden;
@@ -106,7 +138,7 @@
             top: 0;
             left: 0;
             box-sizing: border-box;
-            font-family: "Consolas", "Monaco", "Courier New", monospace;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 14px;
             line-height: 1.5;
             tab-size: 4;
@@ -130,52 +162,46 @@
             resize: none;             
         }
 
-        /* --- SYNTAX HIGHLIGHTING COLORS (Dark Theme) --- */
+        /* --- SYNTAX HIGHLIGHTING COLORS --- */
         .token-keyword  { color: #569cd6; } 
         .token-string   { color: #ce9178; } 
         .token-comment  { color: #6a9955; font-style: italic; } 
         .token-number   { color: #b5cea8; } 
 
-        /* --- RIGHT PANEL: OUTPUT --- */
-        #output-wrapper {
-            width: 50%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            background-color: #1e1e1e;
-        }
-
+        /* --- TOOLBAR & OUTPUT --- */
         .toolbar {
-            /* Lighter grey for surround/toolbar */
             padding: 10px 15px;
-            background-color: #333333;
-            border-bottom: 1px solid #444;
+            background-color: #252526;
+            border-bottom: 1px solid #333;
             display: flex;
             gap: 10px;
             align-items: center;
+            flex-shrink: 0;
         }
 
         button {
             border: none;
-            padding: 8px 16px;
-            border-radius: 3px;
+            padding: 8px 14px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             transition: all 0.2s ease;
-            color: white;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
-        .btn-run { background-color: #0e639c; }
+        .btn-run { background-color: #0e639c; color: white; }
         .btn-run:hover { background-color: #1177bb; }
-        .btn-clear { background-color: #444; color: #ccc; }
-        .btn-clear:hover { background-color: #555; }
-        .btn-submit { background-color: #28a745; }
+        .btn-clear { background-color: #3c3c3c; color: #cccccc; }
+        .btn-clear:hover { background-color: #4c4c4c; }
+        .btn-submit { background-color: #28a745; color: white; margin-left: auto; }
         .btn-submit:hover { background-color: #218838; }
 
         #output {
             flex-grow: 1;
             padding: 15px;
-            font-family: "Consolas", "Monaco", "Courier New", monospace;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 14px;
             white-space: pre-wrap;
             overflow-y: auto;
@@ -185,85 +211,65 @@
 
         .output-error { color: #f48771; }
         .output-success { color: #4ec9b0; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
-        
-        /* --- FOOTER WARNING --- */
-        #sync-warning {
-            height: 30px;
-            background-color: #a31515;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            visibility: hidden; /* Hidden by default */
-            transition: visibility 0.2s, opacity 0.2s;
-            opacity: 0;
-        }
-        
-        #sync-warning.visible {
-            visibility: visible;
-            opacity: 1;
-        }
 
-        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #1e1e1e; }
-        ::-webkit-scrollbar-thumb { background: #424242; }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #505050; }
     </style>
 </head>
 <body>
 
+<!-- Warning Banner at Top -->
+<div id="sync-warning">
+    ⚠️ Warning: Code has changed
+</div>
+
 <div class="container">
     <div id="editor-wrapper">
         <div class="panel-header">
-            <span>Python Code Editor</span>
-            <span style="font-size: 11px; color: #999; text-transform: none;">(powered by Skulpt)</span>
+            <span>main.py</span>
+            <span style="font-size: 10px; color: #666;">Python 3 (Skulpt)</span>
         </div>
         <div id="custom-editor-container">
             <div id="line-numbers">1</div>
             <div id="code-overlay-wrapper">
                 <pre id="highlighting" aria-hidden="true"><code id="highlighting-content"></code></pre>
-                <textarea id="editing" spellcheck="false" oninput="update(this.value); sync_scroll(this);" onscroll="sync_scroll(this);" onkeydown="handleKeyDown(event)"># code</textarea>
+                <textarea id="editing" spellcheck="false" oninput="update(this.value); sync_scroll(this);" onscroll="sync_scroll(this);" onkeydown="handleKeyDown(event)"># Student: Enter your solution here
+def hello():
+    print("Hello from the editor!")
+
+hello()</textarea>
             </div>
         </div>
     </div>
 
     <div id="output-wrapper">
         <div class="toolbar">
-            <button class="btn-run" onclick="runCode()">► Run Code</button>
-            <button class="btn-clear" onclick="clearOutput()">Clear Output</button>
-            <button class="btn-submit" onclick="submitToMoodle()">Copy Code</button>
+            <button class="btn-run" onclick="runCode()"><span>▶</span> Run Code</button>
+            <button class="btn-clear" onclick="clearOutput()">Clear</button>
+            <button class="btn-submit" onclick="submitToMoodle()">Copy & Sync</button>
         </div>
         <div id="output"></div>
     </div>
 </div>
 
-<!-- Warning Footer -->
-<div id="sync-warning">
-    ⚠️ Warning: Current content not synced to Moodle
-</div>
-
 <script>
-    // --- DYNAMIC CONFIGURATION ---
-    
-    // Get parameters directly from the iframe URL
     const urlParams = new URLSearchParams(window.location.search);
-    const QUESTION_ID = urlParams.get("id"); 
-    const MODE = urlParams.get("mode"); // e.g. ?id=Q1&mode=exam
+    const QUESTION_ID = urlParams.get('id'); 
+    const MODE = urlParams.get('mode'); 
 
-    const editing = document.getElementById("editing");
-    const highlightingContent = document.getElementById("highlighting-content");
-    const highlighting = document.getElementById("highlighting");
-    const lineNumbers = document.getElementById("line-numbers");
-    const syncWarning = document.getElementById("sync-warning");
+    const editing = document.getElementById('editing');
+    const highlightingContent = document.getElementById('highlighting-content');
+    const highlighting = document.getElementById('highlighting');
+    const lineNumbers = document.getElementById('line-numbers');
+    const syncWarning = document.getElementById('sync-warning');
 
-    const storageKey = QUESTION_ID ? "python_editor_" + QUESTION_ID : null;
-    const dirtyKey = QUESTION_ID ? "python_dirty_" + QUESTION_ID : null;
+    const storageKey = QUESTION_ID ? "python_editor_" + QUESTION_ID : "python_editor_default";
+    const dirtyKey = QUESTION_ID ? "python_dirty_" + QUESTION_ID : "python_dirty_default";
     
-    // Flag to determine if we are in exam mode based on URL
-    const IS_EXAM_MODE = (MODE === "exam");
+    // Banner only shows if mode is explicitly set to 'warn-on-changes'
+    const IS_WARN_MODE = (MODE === 'warn-on-changes');
     let isDirty = false;
 
     function update(text) {
@@ -273,29 +279,23 @@
         updateLineNumbers(text);
         
         setDirty(true);
-        
-        if (storageKey) {
-            localStorage.setItem(storageKey, text);
-        }
+        localStorage.setItem(storageKey, text);
     }
 
     function setDirty(dirty) {
         isDirty = dirty;
-        // Only show visual warning if content is dirty AND we are in exam mode
-        if (dirty && IS_EXAM_MODE) {
-            syncWarning.classList.add("visible");
+        // Logic: Show banner only if content is dirty AND we are in the specific mode
+        if (dirty && IS_WARN_MODE) { 
+            syncWarning.classList.add('visible');
         } else {
-            syncWarning.classList.remove("visible");
+            syncWarning.classList.remove('visible');
         }
-
-        if (dirtyKey) {
-            localStorage.setItem(dirtyKey, dirty ? "true" : "false");
-        }
+        localStorage.setItem(dirtyKey, dirty ? "true" : "false");
     }
 
     function updateLineNumbers(text) {
-        const lines = text.split("\n").length;
-        lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join("<br>");
+        const lines = text.split('\n').length;
+        lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
     }
 
     function sync_scroll(element) {
@@ -316,14 +316,11 @@
             e.preventDefault();
             const start = textarea.selectionStart;
             const val = textarea.value;
-            
-            const lineStart = val.lastIndexOf("\n", start - 1);
+            const lineStart = val.lastIndexOf('\n', start - 1);
             const currentLineText = val.substring(lineStart + 1, start);
-
             const match = currentLineText.match(/^\s*/);
             const currentIndent = match ? match[0] : "";
             let extraIndent = currentLineText.trimEnd().endsWith(":") ? "    " : "";
-            
             const insertion = "\n" + currentIndent + extraIndent;
             textarea.value = val.substring(0, start) + insertion + val.substring(textarea.selectionEnd);
             textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
@@ -334,7 +331,7 @@
 
     function highlightPython(code) {
         code = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const tokenRegex = /((?:#).*?$)|((?:"(?:[^"\\\\]|\\\\.)*"|&apos;+&apos;+&apos;(?:[^&apos;]+&apos;\\\\]|\\\\.)*&apos;+&apos;)|\\b(def|class|return|if|else|elif|while|for|in|print|import|True|False|None)\\b|(\\b\\d+\\b)/gm;
+        const tokenRegex = /((?:#).*?$)|((?:"(?:[^"\\\\]|\\\\.)*"|'+"'"+'(?:[^'+"'"+'\\\\]|\\\\.)*['+"'"+']))|\\b(def|class|return|if|else|elif|while|for|in|print|import|True|False|None|as|with|try|except|finally|yield|lambda|pass|break|continue)\\b|(\\b\\d+\\b)/gm;
         return code.replace(tokenRegex, function(match, comment, string, keyword, number) {
             if (comment) return `<span class="token-comment">${comment}</span>`;
             if (string) return `<span class="token-string">${string}</span>`;
@@ -346,7 +343,7 @@
 
     var outputDiv = document.getElementById("output");
     function outf(text) { 
-        var span = document.createElement("span");
+        var span = document.createElement('span');
         span.innerText = text;
         outputDiv.appendChild(span);
         outputDiv.scrollTop = outputDiv.scrollHeight;
@@ -367,13 +364,13 @@
         
         Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, editing.value, true))
         .then(() => {
-            var s = document.createElement("span");
-            s.className = "output-success";
+            var s = document.createElement('span');
+            s.className = 'output-success';
             s.innerText = "\n>>> Finished successfully.";
             outputDiv.appendChild(s);
         }, (err) => {
-            var s = document.createElement("span");
-            s.className = "output-error";
+            var s = document.createElement('span');
+            s.className = 'output-error';
             s.innerText = "\n" + err.toString();
             outputDiv.appendChild(s);
         });
@@ -382,30 +379,31 @@
     function clearOutput() { outputDiv.innerHTML = ""; }
 
     function syncWithMoodle(code) {
-        window.parent.postMessage({ type: "moodle-submit-code", content: code }, "*");
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'moodle-submit-code', content: code }, '*');
+        }
     }
 
     async function submitToMoodle() {
         const code = editing.value;
         syncWithMoodle(code);
         
-        // --- IMPROVED CLIPBOARD COPY ---
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            try {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(code);
-            } catch (err) {
+            } else {
                 fallbackCopy(code);
             }
-        } else {
+        } catch (err) {
             fallbackCopy(code);
         }
 
         setDirty(false);
         
-        const btn = document.querySelector(".btn-submit");
-        const oldText = btn.innerText;
-        btn.innerText = "✓ Synced & Copied!";
-        setTimeout(() => btn.innerText = oldText, 2000);
+        const btn = document.querySelector('.btn-submit');
+        const oldText = btn.innerHTML;
+        btn.innerHTML = "✓ Copied!";
+        setTimeout(() => btn.innerHTML = oldText, 2000);
     }
     
     function fallbackCopy(text) {
@@ -413,19 +411,12 @@
         tempInput.value = text;
         document.body.appendChild(tempInput);
         tempInput.select();
-        try {
-            document.execCommand("copy");
-        } catch (err) {
-            console.warn("Clipboard copy failed");
-        }
+        document.execCommand("copy");
         document.body.removeChild(tempInput);
     }
 
-    // LOAD SAVED WORK
-    window.addEventListener("load", function() {
-        // Check for "code" param in URL
-        const codeParam = urlParams.get("code");
-
+    window.addEventListener('load', function() {
+        const codeParam = urlParams.get('code');
         if (codeParam) {
             try {
                 const decodedCode = decodeURIComponent(atob(codeParam));
@@ -433,32 +424,23 @@
                 update(decodedCode);
                 setDirty(false);
                 return;
-            } catch (e) {
-                console.error("Failed to decode code param:", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
-        if (storageKey) {
-            const savedCode = localStorage.getItem(storageKey);
-            const savedDirty = localStorage.getItem(dirtyKey);
+        const savedCode = localStorage.getItem(storageKey);
+        const savedDirty = localStorage.getItem(dirtyKey);
 
-            if (savedCode && savedCode.trim() !== "") {
-                editing.value = savedCode;
-                update(savedCode);
-                if (savedDirty !== null) {
-                    setDirty(savedDirty === "true");
-                } else {
-                    setDirty(false);
-                }
-            } else {
-                update(editing.value);
-                setDirty(false);
-            }
+        if (savedCode && savedCode.trim() !== "") {
+            editing.value = savedCode;
+            update(savedCode);
+            // On load, respect the saved dirty state if we are in warn mode
+            setDirty(savedDirty === "true");
         } else {
             update(editing.value);
             setDirty(false);
         }
     });
 </script>
+
 </body>
 </html>

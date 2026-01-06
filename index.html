@@ -6,8 +6,8 @@
     <title>Python Browser Playground</title>
     
     <!-- CDN LIBRARIES -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt.min.js" type="text/javascript"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt-stdlib.js" type="text/javascript"></script>
+    <script src="skulpt.js" type="text/javascript"></script>
+    <script src="skulpt-stdlib.js" type="text/javascript"></script>
 
     <style>
         /* --- GENERAL LAYOUT --- */
@@ -353,11 +353,6 @@ hello()</textarea>
         
         // Hide warning since content is now synced
         setDirty(false);
-        
-        const btn = document.querySelector('.btn-submit');
-        const oldText = btn.innerText;
-        btn.innerText = "✓ Synced!";
-        setTimeout(() => btn.innerText = oldText, 2000);
     }
 
     // LOAD SAVED WORK

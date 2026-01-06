@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Browser Playground</title>
+    <title>Python Code Editor</title>
     
     <!-- CDN LIBRARIES -->
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
@@ -204,14 +204,14 @@
 
 <!-- Warning Banner at Top -->
 <div id="sync-warning">
-    ⚠️ Warning: Code has changed
+    Warning: Code has been updated - remember to copy your code into the answer box.
 </div>
 
 <div class="container">
     <div id="editor-wrapper">
         <div class="panel-header">
-            <span>main.py</span>
-            <span style="font-size: 11px; color: #666; float: right;">Python 3 (Skulpt)</span>
+            <span>Python Code Editor</span>
+            <span style="font-size: 11px; color: #666; float: right;">(powered by Skulpt)</span>
         </div>
         <div id="custom-editor-container">
             <div id="line-numbers">1</div>
@@ -225,9 +225,9 @@
     <div id="output-wrapper">
         <div class="toolbar">
             <button class="btn-run" onclick="runCode()">► Run Code</button>
-            <button class="btn-clear" onclick="clearOutput()">Clear</button>
+            <button class="btn-clear" onclick="clearOutput()">Clear Output</button>
             <button id="btn-share" class="btn-share" onclick="shareCode()">Share</button>
-            <button class="btn-submit" onclick="submitToMoodle()">Sync Changes</button>
+            <button class="btn-submit" onclick="submitToMoodle()">Copy</button>
         </div>
         <div id="output"></div>
     </div>
@@ -401,7 +401,7 @@
 
         const oldText = shareBtn.innerText;
         shareBtn.innerText = "✓ Link Copied";
-        setTimeout(() => shareBtn.innerText = oldText, 2000);
+        setTimeout(() => shareBtn.innerText = oldText, 1000);
     }
 
     // LOAD SAVED WORK
@@ -429,23 +429,6 @@
             setDirty(false);
         }
     });
-</script>
-
-<!-- PARENT SCRIPT -->
-<script>
-(function() {
-    const textareaSelector = 'textarea[name*="_answer"]'; 
-    window.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'moodle-submit-code') {
-            const targetTextArea = document.querySelector(textareaSelector);
-            if (targetTextArea) {
-                targetTextArea.value = event.data.content;
-                targetTextArea.dispatchEvent(new Event('change', { bubbles: true }));
-                targetTextArea.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        }
-    });
-})();
 </script>
 
 </body>

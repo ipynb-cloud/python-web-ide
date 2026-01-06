@@ -178,7 +178,7 @@
         .btn-run { background-color: #0e639c; color: white; }
         .btn-run:hover { background-color: #1177bb; }
         .btn-clear { background-color: #3c3c3c; color: #cccccc; }
-        .btn-share { background-color: #0e639c; color: white; display: none; } /* Hidden by default */
+        .btn-share { background-color: #0e639c; color: white; }
         .btn-submit { background-color: #28a745; color: white; margin-left: auto; }
 
         #output {
@@ -237,8 +237,6 @@
     // --- DYNAMIC CONFIGURATION ---
     const urlParams = new URLSearchParams(window.location.search);
     const QUESTION_ID = urlParams.get('id') || "default_question"; 
-    const MODE = urlParams.get('mode');
-    const SHOW_SHARE = (urlParams.get('share_button') === 'T');
 
     const editing = document.getElementById('editing');
     const highlightingContent = document.getElementById('highlighting-content');
@@ -250,13 +248,7 @@
     const storageKey = "python_editor_" + QUESTION_ID;
     const dirtyKey = "python_dirty_" + QUESTION_ID;
     
-    const IS_WARN_MODE = (MODE === 'warn-on-changes');
     let isDirty = false;
-
-    // Show share button if param is set to 'T'
-    if (SHOW_SHARE) {
-        shareBtn.style.display = 'flex';
-    }
 
     function update(text) {
         let result_text = text;
@@ -272,7 +264,7 @@
         isDirty = dirty;
         localStorage.setItem(dirtyKey, dirty ? "true" : "false");
         
-        if (dirty && IS_WARN_MODE) {
+        if (dirty) {
             syncWarning.classList.add('visible');
         } else {
             syncWarning.classList.remove('visible');
@@ -321,19 +313,17 @@
 
     function highlightPython(code) {
         code = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        // Enhanced regex for comments, f-strings, standard strings, keywords, numbers, and decorators
         const tokenRegex = /((?:#).*?$)|((?:\b[fF])?(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'))|\b(def|class|import|from|return|if|else|elif|while|for|in|print|try|except|raise|True|False|None|as|with|finally|yield|lambda|pass|break|continue|and|or|not|is|self)\b|(\b\d+\b)|(@\w+)/gm;
         
         return code.replace(tokenRegex, function(match, comment, string, keyword, number, decorator) {
             if (comment) return `<span class="token-comment">${comment}</span>`;
             if (string) {
                 if (string.startsWith('f') || string.startsWith('F')) {
-                    // Primitive interpolation highlighting for f-strings
                     const formattedString = string.replace(/\{.*?\}/g, function(interp) {
-                        const inner = inter.slice(1, -1);
+                        const inner = interp.slice(1, -1);
                         return `<span style="color: #d4d4d4;">{${highlightPython(unescapeHtml(inner))}}</span>`;
                     });
-                    return `<span class="token-fstring">${string}</span>`; 
+                    return `<span class="token-fstring">${formattedString}</span>`; 
                 }
                 return `<span class="token-string">${string}</span>`;
             }
@@ -388,22 +378,29 @@
     function shareCode() {
         const code = editing.value;
         const base64Code = btoa(encodeURIComponent(code));
-        const url = new URL(window.location.href);
-        url.searchParams.set('code', base64Code);
         
-        // Update URL bar
-        window.history.pushState({}, '', url.toString());
+        // Use the current URL as a base. In blob/iframe environments, 
+        // we might not be able to modify the address bar, but we can generate a valid link.
+        let baseUrl = window.location.href.split('?')[0];
+        
+        // If we are in a blob URL environment, sharing the current URL might not work
+        // outside of the session, but constructing the link is still the intended action.
+        const shareUrl = baseUrl + '?code=' + base64Code;
 
         // Copy to clipboard
         const tempInput = document.createElement("textarea");
-        tempInput.value = url.toString();
+        tempInput.value = shareUrl;
         document.body.appendChild(tempInput);
         tempInput.select();
-        document.execCommand("copy");
+        try {
+            document.execCommand("copy");
+        } catch (e) {
+            console.error("Clipboard copy failed");
+        }
         document.body.removeChild(tempInput);
 
         const oldText = shareBtn.innerText;
-        shareBtn.innerText = "✓ Copied Link";
+        shareBtn.innerText = "✓ Link Copied";
         setTimeout(() => shareBtn.innerText = oldText, 2000);
     }
 

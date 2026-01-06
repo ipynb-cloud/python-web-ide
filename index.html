@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Browser Playground</title>
-    
     <!-- CDN LIBRARIES -->
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
 
     <style>
-        /* --- GENERAL LAYOUT --- */
+        /* --- GENERAL LAYOUT (Light Theme) --- */
         body, html {
             height: 100%;
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #ffffff;
+            color: #333333;
             overflow: hidden;
         }
 
@@ -36,7 +34,7 @@
                 width: 100% !important;
                 height: 50% !important;
                 border-right: none;
-                border-bottom: 1px solid #333;
+                border-bottom: 1px solid #e0e0e0;
             }
         }
 
@@ -46,19 +44,23 @@
             height: 100%;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid #333;
-            background-color: #1e1e1e;
+            border-right: 1px solid #e0e0e0;
+            background-color: #ffffff;
         }
 
         .panel-header {
-            background-color: #252526;
+            background-color: #f3f3f3;
             padding: 10px 15px;
             font-size: 13px;
             text-transform: uppercase;
             letter-spacing: 1px;
-            color: #9cdcfe;
-            border-bottom: 1px solid #333;
+            color: #444;
+            font-weight: 600;
+            border-bottom: 1px solid #e0e0e0;
             flex-shrink: 0; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         #custom-editor-container {
@@ -72,13 +74,13 @@
         #line-numbers {
             width: 50px;
             height: 100%;
-            background-color: #1e1e1e;
-            border-right: 1px solid #333;
+            background-color: #f9f9f9;
+            border-right: 1px solid #e0e0e0;
             text-align: right;
             padding: 15px 10px 15px 0; 
             box-sizing: border-box;
-            color: #606060;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            color: #999;
+            font-family: "Consolas", "Monaco", "Courier New", monospace;
             font-size: 14px;
             line-height: 1.5;
             overflow: hidden;
@@ -103,7 +105,7 @@
             top: 0;
             left: 0;
             box-sizing: border-box;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-family: "Consolas", "Monaco", "Courier New", monospace;
             font-size: 14px;
             line-height: 1.5;
             tab-size: 4;
@@ -113,7 +115,7 @@
 
         #highlighting {
             z-index: 1;
-            background-color: #1e1e1e;
+            background-color: #ffffff;
             pointer-events: none; 
         }
         #highlighting code { font-family: inherit; }
@@ -122,16 +124,16 @@
             z-index: 2;
             color: transparent;       
             background: transparent;  
-            caret-color: #d4d4d4;     
+            caret-color: #000000;     
             outline: none;
             resize: none;             
         }
 
-        /* --- SYNTAX HIGHLIGHTING COLORS --- */
-        .token-keyword  { color: #569cd6; } 
-        .token-string   { color: #ce9178; } 
-        .token-comment  { color: #6a9955; font-style: italic; } 
-        .token-number   { color: #b5cea8; } 
+        /* --- SYNTAX HIGHLIGHTING COLORS (Light Theme) --- */
+        .token-keyword  { color: #0000ff; }       /* Blue */
+        .token-string   { color: #a31515; }       /* Red */
+        .token-comment  { color: #008000; font-style: italic; } /* Green */
+        .token-number   { color: #098658; }       /* Teal */
 
         /* --- RIGHT PANEL: OUTPUT --- */
         #output-wrapper {
@@ -139,13 +141,13 @@
             height: 100%;
             display: flex;
             flex-direction: column;
-            background-color: #1e1e1e;
+            background-color: #ffffff;
         }
 
         .toolbar {
             padding: 10px 15px;
-            background-color: #252526;
-            border-bottom: 1px solid #333;
+            background-color: #f3f3f3;
+            border-bottom: 1px solid #e0e0e0;
             display: flex;
             gap: 10px;
             align-items: center;
@@ -159,30 +161,33 @@
             font-size: 13px;
             font-weight: 600;
             transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .btn-run { background-color: #0e639c; color: white; }
         .btn-run:hover { background-color: #1177bb; }
-        .btn-clear { background-color: #3c3c3c; color: #cccccc; }
+        .btn-clear { background-color: #e0e0e0; color: #333; }
+        .btn-clear:hover { background-color: #d0d0d0; }
         .btn-submit { background-color: #28a745; color: white; }
+        .btn-submit:hover { background-color: #218838; }
 
         #output {
             flex-grow: 1;
             padding: 15px;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-family: "Consolas", "Monaco", "Courier New", monospace;
             font-size: 14px;
             white-space: pre-wrap;
             overflow-y: auto;
-            color: #cccccc;
-            background-color: #1e1e1e;
+            color: #333333;
+            background-color: #ffffff;
         }
 
-        .output-error { color: #f48771; }
-        .output-success { color: #4ec9b0; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
+        .output-error { color: #d32f2f; }
+        .output-success { color: #008000; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
         
         /* --- FOOTER WARNING --- */
         #sync-warning {
             height: 30px;
-            background-color: #a31515;
+            background-color: #d32f2f;
             color: white;
             display: flex;
             align-items: center;
@@ -202,8 +207,9 @@
         }
 
         ::-webkit-scrollbar { width: 10px; height: 10px; }
-        ::-webkit-scrollbar-track { background: #1e1e1e; }
-        ::-webkit-scrollbar-thumb { background: #424242; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
     </style>
 </head>
 <body>
@@ -211,15 +217,14 @@
 <div class="container">
     <div id="editor-wrapper">
         <div class="panel-header">
-            <span>main.py</span>
-            <span style="font-size: 11px; color: #666;">Python 3 (Skulpt)</span>
+            <span>Python Code Editor</span>
+            <span style="font-size: 11px; color: #666; text-transform: none;">(powered by Skulpt)</span>
         </div>
         <div id="custom-editor-container">
             <div id="line-numbers">1</div>
             <div id="code-overlay-wrapper">
                 <pre id="highlighting" aria-hidden="true"><code id="highlighting-content"></code></pre>
-                <textarea id="editing" spellcheck="false" oninput="update(this.value); sync_scroll(this);" onscroll="sync_scroll(this);" onkeydown="handleKeyDown(event)">#add code here
-</textarea>
+                <textarea id="editing" spellcheck="false" oninput="update(this.value); sync_scroll(this);" onscroll="sync_scroll(this);" onkeydown="handleKeyDown(event)"># code</textarea>
             </div>
         </div>
     </div>
@@ -241,19 +246,23 @@
 
 <script>
     // --- DYNAMIC CONFIGURATION ---
+    
+    // Get parameters directly from the iframe URL
     const urlParams = new URLSearchParams(window.location.search);
-    const QUESTION_ID = urlParams.get('id'); 
-    const MODE = urlParams.get('mode'); // Get 'mode' param (e.g. ?id=Q1&mode=exam)
+    const QUESTION_ID = urlParams.get("id"); 
+    const MODE = urlParams.get("mode"); // e.g. ?id=Q1&mode=exam
 
-    const editing = document.getElementById('editing');
-    const highlightingContent = document.getElementById('highlighting-content');
-    const highlighting = document.getElementById('highlighting');
-    const lineNumbers = document.getElementById('line-numbers');
-    const syncWarning = document.getElementById('sync-warning');
+    const editing = document.getElementById("editing");
+    const highlightingContent = document.getElementById("highlighting-content");
+    const highlighting = document.getElementById("highlighting");
+    const lineNumbers = document.getElementById("line-numbers");
+    const syncWarning = document.getElementById("sync-warning");
 
     const storageKey = QUESTION_ID ? "python_editor_" + QUESTION_ID : null;
     const dirtyKey = QUESTION_ID ? "python_dirty_" + QUESTION_ID : null;
     
+    // Flag to determine if we are in exam mode based on URL
+    const IS_EXAM_MODE = (MODE === "exam");
     let isDirty = false;
 
     function update(text) {
@@ -272,10 +281,10 @@
     function setDirty(dirty) {
         isDirty = dirty;
         // Only show visual warning if content is dirty AND we are in exam mode
-        if (dirty && MODE === 'exam') {
-            syncWarning.classList.add('visible');
+        if (dirty && IS_EXAM_MODE) {
+            syncWarning.classList.add("visible");
         } else {
-            syncWarning.classList.remove('visible');
+            syncWarning.classList.remove("visible");
         }
 
         if (dirtyKey) {
@@ -284,8 +293,8 @@
     }
 
     function updateLineNumbers(text) {
-        const lines = text.split('\n').length;
-        lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+        const lines = text.split("\n").length;
+        lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join("<br>");
     }
 
     function sync_scroll(element) {
@@ -307,8 +316,7 @@
             const start = textarea.selectionStart;
             const val = textarea.value;
             
-            // --- FIX: Corrected Logic ---
-            const lineStart = val.lastIndexOf('\n', start - 1);
+            const lineStart = val.lastIndexOf("\n", start - 1);
             const currentLineText = val.substring(lineStart + 1, start);
 
             const match = currentLineText.match(/^\s*/);
@@ -325,7 +333,7 @@
 
     function highlightPython(code) {
         code = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const tokenRegex = /((?:#).*?$)|((?:"(?:[^"\\\\]|\\\\.)*"|'+"'"+'(?:[^'+"'"+'\\\\]|\\\\.)*['+"'"+']))|\\b(def|class|return|if|else|elif|while|for|in|print|import|True|False|None)\\b|(\\b\\d+\\b)/gm;
+        const tokenRegex = /((?:#).*?$)|((?:"(?:[^"\\\\]|\\\\.)*"|&apos;+&apos;+&apos;(?:[^&apos;]+&apos;\\\\]|\\\\.)*&apos;+&apos;)|\\b(def|class|return|if|else|elif|while|for|in|print|import|True|False|None)\\b|(\\b\\d+\\b)/gm;
         return code.replace(tokenRegex, function(match, comment, string, keyword, number) {
             if (comment) return `<span class="token-comment">${comment}</span>`;
             if (string) return `<span class="token-string">${string}</span>`;
@@ -337,7 +345,7 @@
 
     var outputDiv = document.getElementById("output");
     function outf(text) { 
-        var span = document.createElement('span');
+        var span = document.createElement("span");
         span.innerText = text;
         outputDiv.appendChild(span);
         outputDiv.scrollTop = outputDiv.scrollHeight;
@@ -358,13 +366,13 @@
         
         Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, editing.value, true))
         .then(() => {
-            var s = document.createElement('span');
-            s.className = 'output-success';
+            var s = document.createElement("span");
+            s.className = "output-success";
             s.innerText = "\n>>> Finished successfully.";
             outputDiv.appendChild(s);
         }, (err) => {
-            var s = document.createElement('span');
-            s.className = 'output-error';
+            var s = document.createElement("span");
+            s.className = "output-error";
             s.innerText = "\n" + err.toString();
             outputDiv.appendChild(s);
         });
@@ -373,7 +381,7 @@
     function clearOutput() { outputDiv.innerHTML = ""; }
 
     function syncWithMoodle(code) {
-        window.parent.postMessage({ type: 'moodle-submit-code', content: code }, '*');
+        window.parent.postMessage({ type: "moodle-submit-code", content: code }, "*");
     }
 
     async function submitToMoodle() {
@@ -393,7 +401,7 @@
 
         setDirty(false);
         
-        const btn = document.querySelector('.btn-submit');
+        const btn = document.querySelector(".btn-submit");
         const oldText = btn.innerText;
         btn.innerText = "✓ Synced & Copied!";
         setTimeout(() => btn.innerText = oldText, 2000);
@@ -413,8 +421,10 @@
     }
 
     // LOAD SAVED WORK
-    window.addEventListener('load', function() {
-        const codeParam = urlParams.get('code');
+    window.addEventListener("load", function() {
+        // Check for "code" param in URL
+        const codeParam = urlParams.get("code");
+
         if (codeParam) {
             try {
                 const decodedCode = decodeURIComponent(atob(codeParam));
@@ -449,29 +459,5 @@
         }
     });
 </script>
-
-<!-- PARENT SCRIPT -->
-<script>
-(function() {
-    const textareaSelector = 'textarea[name*="_answer"]'; 
-    window.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'moodle-submit-code') {
-            const textareas = document.querySelectorAll(textareaSelector);
-            
-            // SECURITY CHECK: Only sync if exactly one textarea is found 
-            // to prevent overwriting wrong fields in ambiguous layouts.
-            if (textareas.length === 1) {
-                const targetTextArea = textareas[0];
-                targetTextArea.value = event.data.content;
-                targetTextArea.dispatchEvent(new Event('change', { bubbles: true }));
-                targetTextArea.dispatchEvent(new Event('input', { bubbles: true }));
-            } else if (textareas.length > 1) {
-                console.warn("Multiple potential answer textareas found. Ignoring sync to avoid ambiguity.");
-            }
-        }
-    });
-})();
-</script>
-
 </body>
 </html>

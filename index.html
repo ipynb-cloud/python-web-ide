@@ -386,13 +386,16 @@ greet("World")
 
     // --- EDITOR LOGIC (HIGHLIGHTING & SYNC) ---
 
-    function update(text) {
+    // Now accepts optional shouldMarkDirty (defaults to true)
+    function update(text, shouldMarkDirty = true) {
         let result_text = text;
         if(text[text.length-1] == "\n") result_text += " "; 
         highlightingContent.innerHTML = highlightPython(result_text);
         updateLineNumbers(text);
         
-        setDirty(true);
+        if (shouldMarkDirty) {
+            setDirty(true);
+        }
         localStorage.setItem(storageKey, text);
     }
 
@@ -779,20 +782,29 @@ greet("World")
             try {
                 const decodedCode = decodeURIComponent(atob(codeParam));
                 editing.value = decodedCode;
-                update(decodedCode);
+                update(decodedCode, false);
                 setDirty(false);
             } catch (e) { console.error(e); }
         } else {
             const savedCode = localStorage.getItem(storageKey);
+            const savedDirty = localStorage.getItem(dirtyKey);
+
             if (savedCode && savedCode.trim() !== "") {
                 editing.value = savedCode;
-                update(savedCode);
+                // Don't mark dirty on initial load from storage
+                update(savedCode, false);
             } else {
-                update(editing.value);
+                update(editing.value, false);
+            }
+
+            // Restore dirty state explicitly
+            if (savedDirty === "true") {
+                setDirty(true);
+            } else {
+                setDirty(false);
             }
         }
-        update(editing.value);
-
+        
         // Load saved layout
         const savedLayout = localStorage.getItem(layoutKey);
         if (savedLayout !== null) {

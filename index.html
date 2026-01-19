@@ -380,6 +380,7 @@ greet("World")
 
     const storageKey = "python_editor_" + QUESTION_ID;
     const dirtyKey = "python_dirty_" + QUESTION_ID;
+    const layoutKey = "python_layout_" + QUESTION_ID;
     
     let isDirty = false;
 
@@ -587,10 +588,13 @@ greet("World")
     // Toggle Button Logic
     function toggleLayout(forceMode = -1) {
         if (forceMode !== -1) {
-            layoutMode = forceMode;
+            layoutMode = parseInt(forceMode);
         } else {
             layoutMode = (layoutMode + 1) % 3;
         }
+
+        // Save state
+        localStorage.setItem(layoutKey, layoutMode);
 
         // Reset Styles
         container.className = "container";
@@ -738,9 +742,19 @@ greet("World")
         shareBtn.innerText = "✓ Link Copied";
         setTimeout(() => shareBtn.innerText = "Share Link", 1000);
     }
+
+    function syncWithMoodle(code) {
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'moodle-submit-code', content: code }, '*');
+        }
+    }
     
     function submitToMoodle() {
         const code = editing.value;
+
+        // Sync with Moodle
+        syncWithMoodle(code);
+
         const tempInput = document.createElement("textarea");
         tempInput.value = code;
         document.body.appendChild(tempInput);
@@ -778,6 +792,12 @@ greet("World")
             }
         }
         update(editing.value);
+
+        // Load saved layout
+        const savedLayout = localStorage.getItem(layoutKey);
+        if (savedLayout !== null) {
+            toggleLayout(parseInt(savedLayout));
+        }
     });
 </script>
 

@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Python Code Editor</title>
     
-    <!-- CDN LIBRARIES -->
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
 
@@ -215,6 +214,12 @@
             resize: none;             
         }
 
+        #editing::placeholder {
+            color: #6a9955;
+            font-style: italic;
+            opacity: 1;
+        }
+
         /* --- SYNTAX HIGHLIGHTING COLORS --- */
         .token-keyword  { color: #569cd6; } 
         .token-string   { color: #ce9178; } 
@@ -296,7 +301,6 @@
 </head>
 <body>
 
-<!-- Warning Banner at Top -->
 <div id="sync-warning">
     Warning: Code has been updated - remember to copy your code into the answer box.
 </div>
@@ -317,34 +321,25 @@
 
 <div class="container vertical-split" id="main-container">
     
-    <!-- EDITOR PANEL -->
     <div id="editor-wrapper">
         <div class="panel-header">
             <span>CODE</span>
-            <!-- Hidden button that appears only when output is hidden -->
             <button class="btn-show-output" onclick="showTerminal()">Show Output Panel</button>
         </div>
         <div id="custom-editor-container">
             <div id="line-numbers">1</div>
             <div id="code-overlay-wrapper">
                 <pre id="highlighting" aria-hidden="true"><code id="highlighting-content"></code></pre>
-                <textarea id="editing" spellcheck="false" 
+                <textarea id="editing" spellcheck="false" placeholder="#add code here"
                     oninput="update(this.value); sync_scroll(this);" 
                     onscroll="sync_scroll(this);" 
-                    onkeydown="handleKeyDown(event)"># Write your Python code here
-def greet(name):
-    print(f"Hello, {name}!")
-
-greet("World")
-</textarea>
+                    onkeydown="handleKeyDown(event)"></textarea>
             </div>
         </div>
     </div>
 
-    <!-- RESIZER -->
     <div class="resizer" id="resizer"></div>
 
-    <!-- OUTPUT PANEL -->
     <div id="output-wrapper">
         <div class="panel-header">
             <span>OUTPUT</span>

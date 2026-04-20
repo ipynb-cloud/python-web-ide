@@ -562,9 +562,9 @@
     
         // 3. SANITIZE: Remove SEB's hidden control characters and 
         // force-strip any trailing whitespace/newlines that SEB appends.
-        let cleanText = clipboardData
-            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // Remove control chars
-            .trimEnd(); // Remove the phantom 5 newlines/spaces
+        let cleanText = clipboardData.trimEnd(); 
+            //.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // Remove control chars
+            //.trimEnd(); // Remove the phantom 5 newlines/spaces
     
         // 4. Manually insert the text at the cursor position
         const start = editing.selectionStart;

@@ -570,7 +570,8 @@
             html = html.replace(/<style([\s\S]*?)<\/style>/gi, '');
             html = html.replace(/<script([\s\S]*?)<\/script>/gi, '');
             console.log("Stage 1: Removed <style>/<script>. Length:", html.length);
-    
+            console.log("HTML Content:", html);
+
             // Stage 2: Convert structural tags to newlines
             html = html.replace(/<\/div>/ig, '\n');
             html = html.replace(/<\/li>/ig, '\n');
@@ -578,15 +579,17 @@
             html = html.replace(/<\/ul>/ig, '\n');
             html = html.replace(/<\/p>/ig, '\n');
             console.log("Stage 2: Structural tags to newlines applied.");
-    
+            console.log("HTML Content:", html);
+            
             // Stage 3: Handle <br> tags
             html = html.replace(/<br\s*[\/]?>/gi, "\n");
             console.log("Stage 3: <br> tags converted to newlines.");
-    
+            console.log("HTML Content:", html);
+            
             // Stage 4: Strip all remaining tags
             html = html.replace(/<[^>]+>/ig, '');
             console.log("Stage 4: All remaining HTML tags stripped.");
-    
+            console.log("HTML Content:", html);
             // Stage 5: Entity Decoding (Crucial for Python symbols like <, >, &)
             text = html
                 .replace(/&nbsp;/g, ' ')

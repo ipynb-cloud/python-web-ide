@@ -388,7 +388,8 @@
         if(text[text.length-1] == "\n") result_text += " "; 
         highlightingContent.innerHTML = highlightPython(result_text);
         updateLineNumbers(text);
-        
+        // Force a scroll sync to ensure the overlay aligns with the cursor
+        sync_scroll(editing);
         if (shouldMarkDirty) {
             setDirty(true);
         }
@@ -554,6 +555,7 @@
     }
 
     function handlePaste(e) {
+        setTimeout(() => {
         const clipboardData = e.clipboardData || window.clipboardData;
         console.log("--- START PASTE ANALYSIS ---");
     
@@ -626,9 +628,10 @@
     
             // Force the highlight and visibility update immediately
             update(editing.value);
-            setTimeout(() => sync_scroll(editing), 0);
             console.log("--- PASTE PROCESS COMPLETE ---");
         }
+        sync_scroll(editing);
+        }, 0);
     }
         
     // --- SYNTAX HIGHLIGHTING ---

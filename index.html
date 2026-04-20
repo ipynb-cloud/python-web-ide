@@ -553,51 +553,42 @@
         }
     }
 
-    function handlePaste(e) {
-        let text = "";
+        function handlePaste(e) {
+        // 1. Get the plain text immediately
         const clipboardData = e.clipboardData || window.clipboardData;
-    
-        // 1. Try to get HTML content first (often more 'fresh' in SEB Windows)
-        let html = clipboardData.getData('text/html');
-    
-        if (html && html.trim().length > 0) {
-            e.preventDefault();
-    
-            // Use your suggested regex cleaning logic
-            html = html.replace(/<style([\s\S]*?)<\/style>/gi, '');
-            html = html.replace(/<script([\s\S]*?)<\/script>/gi, '');
-            html = html.replace(/<\/div>/ig, '\n');
-            html = html.replace(/<\/li>/ig, '\n');
-            html = html.replace(/<li>/ig, '  * ');
-            html = html.replace(/<\/ul>/ig, '\n');
-            html = html.replace(/<\/p>/ig, '\n');
-            html = html.replace(/<br\s*[\/]?>/gi, "\n");
-            html = html.replace(/<[^>]+>/ig, ''); // Strip all remaining tags
-    
-            // Decode HTML entities (like &lt; or &nbsp;) that might be in the HTML
-            const txtDoc = new DOMParser().parseFromString(html, 'text/html');
-            text = txtDoc.body.textContent;
-        } else {
-            // Fallback to plain text if HTML is empty
-            text = clipboardData.getData('text/plain');
-            if (text) e.preventDefault();
-        }
+        let text = clipboardData.getData('text');
     
         if (text) {
-            // 2. Final sanitization for SEB Windows
-            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"); // Normalize newlines
-            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ""); // Remove control chars
+            // Stop the browser's default (and often double-spaced) paste
+            e.preventDefault();
     
-            // 3. Manual insertion at cursor
+            // 2. NORMALIZE & CLEAN
+            // Standardize newlines for the Python engine
+            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            
+            // Strip the non-printable characters that SEB Windows adds
+            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+    
+            // 3. TARGET THE 5 NEWLINES
+            // Instead of a broad trim, we only remove exactly what SEB appends
+            if (text.endsWith("\n\n\n\n\n")) {
+                text = text.slice(0, -5);
+            }
+    
+            // 4. MANUAL INSERTION
             const start = editing.selectionStart;
             const end = editing.selectionEnd;
             editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
     
-            // 4. Force UI update and scroll sync (Fixes invisibility)
+            // 5. UPDATE UI (Fixes invisibility)
             editing.selectionStart = editing.selectionEnd = start + text.length;
-            update(editing.value);
             
-            setTimeout(() => sync_scroll(editing), 0);
+            // We use a tiny delay to ensure the textarea has "accepted" the value 
+            // before the highlighting engine runs.
+            setTimeout(() => {
+                update(editing.value);
+                sync_scroll(editing);
+            }, 10);
         }
     }
         

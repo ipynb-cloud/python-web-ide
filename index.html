@@ -554,33 +554,52 @@
     }
 
     function handlePaste(e) {
-        // 1. Prevent default to stop SEB from injecting its own formatting
-        e.preventDefault();
+        let text = "";
+        const clipboardData = e.clipboardData || window.clipboardData;
     
-        // 2. Get the raw text from the clipboard
-        let clipboardData = (e.clipboardData || window.clipboardData).getData('text');
+        // 1. Try to get HTML content first (often more 'fresh' in SEB Windows)
+        let html = clipboardData.getData('text/html');
     
-        // 3. NORMALIZE: Convert Windows (\r\n) and Mac (\r) to Standard (\n)
-        // This ensures internal newlines are preserved and recognized by Skulpt/CSS
-        let cleanText = clipboardData.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+        if (html && html.trim().length > 0) {
+            e.preventDefault();
     
-        // 5. Insert text at the current cursor position
-        const start = editing.selectionStart;
-        const end = editing.selectionEnd;
-        const currentVal = editing.value;
+            // Use your suggested regex cleaning logic
+            html = html.replace(/<style([\s\S]*?)<\/style>/gi, '');
+            html = html.replace(/<script([\s\S]*?)<\/script>/gi, '');
+            html = html.replace(/<\/div>/ig, '\n');
+            html = html.replace(/<\/li>/ig, '\n');
+            html = html.replace(/<li>/ig, '  * ');
+            html = html.replace(/<\/ul>/ig, '\n');
+            html = html.replace(/<\/p>/ig, '\n');
+            html = html.replace(/<br\s*[\/]?>/gi, "\n");
+            html = html.replace(/<[^>]+>/ig, ''); // Strip all remaining tags
+    
+            // Decode HTML entities (like &lt; or &nbsp;) that might be in the HTML
+            const txtDoc = new DOMParser().parseFromString(html, 'text/html');
+            text = txtDoc.body.textContent;
+        } else {
+            // Fallback to plain text if HTML is empty
+            text = clipboardData.getData('text/plain');
+            if (text) e.preventDefault();
+        }
+    
+        if (text) {
+            // 2. Final sanitization for SEB Windows
+            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"); // Normalize newlines
+            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ""); // Remove control chars
+    
+            // 3. Manual insertion at cursor
+            const start = editing.selectionStart;
+            const end = editing.selectionEnd;
+            editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
+    
+            // 4. Force UI update and scroll sync (Fixes invisibility)
+            editing.selectionStart = editing.selectionEnd = start + text.length;
+            update(editing.value);
+            
+            setTimeout(() => sync_scroll(editing), 0);
+        }
         
-        editing.value = currentVal.substring(0, start) + cleanText + currentVal.substring(end);
-    
-        // 6. Move cursor to the end of the pasted content
-        editing.selectionStart = editing.selectionEnd = start + cleanText.length;
-    
-        // 7. Update UI immediately (fixes the invisibility)
-        update(editing.value);
-        
-        // Final sync for scroll alignment
-        setTimeout(() => sync_scroll(editing), 0);
-    }
-    
     // --- SYNTAX HIGHLIGHTING ---
     function unescapeHtml(text) {
         return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");

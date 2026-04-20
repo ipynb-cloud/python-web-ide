@@ -333,7 +333,8 @@
                 <textarea id="editing" spellcheck="false" placeholder="# try and test code here"
                     oninput="update(this.value); sync_scroll(this);" 
                     onscroll="sync_scroll(this);" 
-                    onkeydown="handleKeyDown(event)"></textarea>
+                    onkeydown="handleKeyDown(event)"
+                    onpaste="handlePaste(event)"></textarea>
             </div>
         </div>
     </div>
@@ -552,6 +553,37 @@
         }
     }
 
+    function handlePaste(e) {
+        // 1. Stop the browser's default (and often buggy) paste logic
+        e.preventDefault();
+    
+        // 2. Get the text from the clipboard
+        let clipboardData = (e.clipboardData || window.clipboardData).getData('text');
+    
+        // 3. SANITIZE: Remove SEB's hidden control characters and 
+        // force-strip any trailing whitespace/newlines that SEB appends.
+        let cleanText = clipboardData
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // Remove control chars
+            .trimEnd(); // Remove the phantom 5 newlines/spaces
+    
+        // 4. Manually insert the text at the cursor position
+        const start = editing.selectionStart;
+        const end = editing.selectionEnd;
+        const currentVal = editing.value;
+        
+        editing.value = currentVal.substring(0, start) + cleanText + currentVal.substring(end);
+    
+        // 5. Place cursor at the end of the pasted text
+        editing.selectionStart = editing.selectionEnd = start + cleanText.length;
+    
+        // 6. FORCE REPAINT: Call update immediately so text becomes visible
+        update(editing.value);
+        
+        // Ensure the scroll layers are perfectly aligned
+        setTimeout(() => sync_scroll(editing), 0);
+    }
+
+    
     // --- SYNTAX HIGHLIGHTING ---
     function unescapeHtml(text) {
         return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");

@@ -738,6 +738,13 @@
         }
     });
 
+    document.getElementById('editor-wrapper').addEventListener('mouseenter', () => {
+        if (document.activeElement !== editing) {
+            console.log("Syncing clipboard via focus poke...");
+            editing.focus({ preventScroll: true });
+        }
+    });
+
     document.addEventListener('mouseup', () => {
         if (isResizing) {
             isResizing = false;

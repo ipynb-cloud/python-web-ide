@@ -859,6 +859,28 @@
         setDirty(false);
     }
 
+    // --- PASTE EVENT LISTENER (FROM PARENT WINDOW) ---
+    window.addEventListener('insert_starter_code', function(e) {
+        // Ensure the message is a string (the code snippet)
+        if (typeof e.data === 'string') {
+            const text = e.data;
+            const start = editing.selectionStart;
+            const end = editing.selectionEnd;
+            
+            // Insert text at the current cursor position
+            editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
+            
+            // Move cursor to the end of the pasted text
+            editing.selectionStart = editing.selectionEnd = start + text.length;
+            
+            // Refocus, update syntax highlighting, and sync scroll
+            editing.focus();
+            update(editing.value);
+            sync_scroll(editing);
+        }
+    });
+
+    
     // --- INIT ---
     window.addEventListener('load', function() {
         const codeParam = urlParams.get('code');

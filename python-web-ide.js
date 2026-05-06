@@ -225,13 +225,22 @@ const RAW_EDITOR_HTML = `<!DOCTYPE html>
             opacity: 0.6;
         }
 
-        /* --- SYNTAX HIGHLIGHTING COLORS --- */
+        /* --- SYNTAX HIGHLIGHTING COLORS & TOGGLE --- */
         .token-keyword  { color: #569cd6; } 
         .token-string   { color: #ce9178; } 
         .token-fstring  { color: #f44747; } 
         .token-comment  { color: #6a9955; font-style: italic; } 
         .token-number   { color: #b5cea8; } 
         .token-decorator{ color: #c586c0; } 
+
+        /* When highlighting is toggled OFF, override the transparent editing box */
+        body.no-highlight #editing {
+            color: #d4d4d4;
+            background-color: #1e1e1e;
+        }
+        body.no-highlight #highlighting {
+            visibility: hidden;
+        }
 
         /* --- TOOLBAR & OUTPUT --- */
         .toolbar {
@@ -269,6 +278,10 @@ const RAW_EDITOR_HTML = `<!DOCTYPE html>
         .btn-share { background-color: #3c3c3c; color: #9cdcfe; }
 
         .btn-layout { background-color: #444; }
+
+        .btn-highlight-toggle { background-color: #6a9955; color: white; }
+        .btn-highlight-toggle:hover { background-color: #7ab860; }
+        .btn-highlight-toggle.off { background-color: #555; color: #aaa; text-decoration: line-through; }
 
         .btn-sm {
             padding: 2px 8px; 
@@ -313,9 +326,9 @@ const RAW_EDITOR_HTML = `<!DOCTYPE html>
 <div class="main-toolbar">
     <div class="toolbar-left">
         <div class="main-title">PYTHON EDITOR</div>
-        <!-- <button id="btn-share" class="btn-share btn-sm" onclick="shareCode()">Share Link</button> -->
     </div>
     <div class="toolbar-actions">
+        <button id="btn-toggle-highlight" class="btn-highlight-toggle" onclick="toggleHighlighting()" title="Toggle Syntax Highlighting">✨ Syntax ON</button>
         <button class="btn-layout" onclick="toggleLayout()" title="Change Layout">
             <span id="layout-icon">◫</span> Layout
         </button>
@@ -382,8 +395,10 @@ const RAW_EDITOR_HTML = `<!DOCTYPE html>
     const storageKey = "python_editor_" + QUESTION_ID;
     const dirtyKey = "python_dirty_" + QUESTION_ID;
     const layoutKey = "python_layout_" + QUESTION_ID;
+    const highlightKey = "python_highlight_" + QUESTION_ID;
     
     let isDirty = false;
+    let isHighlightingEnabled = true;
 
     // --- EDITOR LOGIC (HIGHLIGHTING & SYNC) ---
 
@@ -391,8 +406,13 @@ const RAW_EDITOR_HTML = `<!DOCTYPE html>
     function update(text, shouldMarkDirty = true) {
         let result_text = text;
         if(text[text.length-1] == "\\n") result_text += " "; 
+        
+        // We always update the innerHTML so that the DOM remains in sync, 
+        // even if CSS is currently hiding the syntax layer.
         highlightingContent.innerHTML = highlightPython(result_text);
+        
         updateLineNumbers(text);
+        
         // Force a scroll sync to ensure the overlay aligns with the cursor
         sync_scroll(editing);
         if (shouldMarkDirty) {
@@ -667,6 +687,29 @@ const RAW_EDITOR_HTML = `<!DOCTYPE html>
         });
     }
 
+    // --- TOGGLE HIGHLIGHTING LOGIC ---
+    function toggleHighlighting(forceState = null) {
+        if (forceState !== null) {
+            isHighlightingEnabled = forceState === true || forceState === 'true';
+        } else {
+            isHighlightingEnabled = !isHighlightingEnabled;
+        }
+
+        localStorage.setItem(highlightKey, isHighlightingEnabled);
+
+        const btn = document.getElementById('btn-toggle-highlight');
+        if (isHighlightingEnabled) {
+            document.body.classList.remove('no-highlight');
+            if (btn) { btn.classList.remove('off'); btn.innerText = "✨ Syntax ON"; }
+        } else {
+            document.body.classList.add('no-highlight');
+            if (btn) { btn.classList.add('off'); btn.innerText = "✨ Syntax OFF"; }
+        }
+
+        // Resync visuals
+        update(editing.value, false);
+    }
+
     // --- LAYOUT & RESIZING LOGIC ---
     let layoutMode = 0; // 0: Vertical, 1: Horizontal, 2: Hidden Output
     
@@ -921,6 +964,12 @@ const RAW_EDITOR_HTML = `<!DOCTYPE html>
             }
         }
         
+        // Load saved highlighting state
+        const savedHighlight = localStorage.getItem(highlightKey);
+        if (savedHighlight !== null) {
+            toggleHighlighting(savedHighlight);
+        }
+
         // Load saved layout
         const savedLayout = localStorage.getItem(layoutKey);
         if (savedLayout !== null) {

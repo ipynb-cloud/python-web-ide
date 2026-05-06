@@ -425,7 +425,7 @@
         if (hostConnected && autoSyncEnabled) {
             // Auto Sync is Active
             syncBanner.className = 'banner-active visible';
-            syncBannerText.innerText = 'Auto-copy to answer box';
+            syncBannerText.innerText = 'Auto-copy to answer box active';
             btnToggleSync.innerText = 'Turn off';
             btnToggleSync.style.display = 'inline-block';
             btnToggleSync.onclick = () => { 
@@ -695,47 +695,27 @@
     }
 
     function handlePaste(e) {
-        // Capture plain text synchronously as clipboard data might be cleared in timeout
-        const rawPlainText = (e.clipboardData || window.clipboardData).getData('text') || "";
-
-        setTimeout(() => {
         const clipboardData = e.clipboardData || window.clipboardData;
-        console.log("--- START PASTE ANALYSIS ---");
-    
+        if (!clipboardData) return;
+
+        // Prevent the browser from doing its own paste immediately to avoid duplication
+        e.preventDefault();
+
         let html = clipboardData.getData('text/html');
-        let text = "";
-    
+        let text = clipboardData.getData('text');
+
         if (html && html.trim().length > 0) {
-            console.log("Stage 0 (Raw HTML from SEB):", html);
-            e.preventDefault();
-    
-            // Stage 1: Remove <style> and <script> blocks
             let processed = html.replace(/<style([\s\S]*?)<\/style>/gi, '');
             processed = processed.replace(/<script([\s\S]*?)<\/script>/gi, '');
-            console.log("Stage 1 (Post-Style/Script Strip):", processed);
-    
-            // Stage 2: Strip all attributes (Fixes the bulky <pre style="...">)
-            // This turns <pre id="..." style="..."> into <pre>
             processed = processed.replace(/(<[a-z0-9]+)\s+[^>]+(?=>)/gi, '$1');
-            console.log("Stage 2 (Post-Attribute Strip):", processed);
-    
-            // Stage 3: Convert <br> to newlines
             processed = processed.replace(/<br\s*\/?>/gi, "\n");
-            console.log("Stage 3 (Post-BR Conversion):", processed);
-    
-            // Stage 4: Convert structural closing tags to newlines
             processed = processed.replace(/<\/div>/ig, '\n');
             processed = processed.replace(/<\/p>/ig, '\n');
             processed = processed.replace(/<\/li>/ig, '\n');
             processed = processed.replace(/<li>/ig, '  * ');
             processed = processed.replace(/<\/ul>/ig, '\n');
-            console.log("Stage 4 (Post-Structural Conversion):", processed);
-    
-            // Stage 5: Strip all remaining tags (like <pre> and <div>)
             processed = processed.replace(/<[^>]+>/ig, '');
-            console.log("Stage 5 (Post-Tag Strip):", processed);
-    
-            // Stage 6: Decode HTML Entities (Essential for symbols like <, >, &)
+            
             text = processed
                 .replace(/&nbsp;/g, ' ')
                 .replace(/&lt;/g, '<')
@@ -743,47 +723,37 @@
                 .replace(/&amp;/g, '&')
                 .replace(/&quot;/g, '"')
                 .replace(/&#39;/g, "'");
-            console.log("Stage 6 (Post-Entity Decoding):", text);
-        } else {
-            console.log("Stage 0: No HTML found in SEB buffer. Falling back to plain text.");
-            text = clipboardData.getData('text');
-            if (text) {
-                e.preventDefault();
-                console.log("Raw Plain Text:", text);
-            }
-        }
-    
-        if (text) {
-            // Stage 7: SEB/Windows-Specific Normalization
-            // 1. Normalize line endings (\r\n -> \n)
+
             text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-            // 2. Strip non-printable control characters often added by SEB/Chromium hooks
             text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
 
-            // Stage 7.5: HTML Artifact Fix (The extra space bug)
-            // HTML parsers often turn formatting tags into artificial leading/trailing spaces.
-            // If the pure plain-text clipboard lacks them, safely strip them out.
-            if (html && html.trim().length > 0 && rawPlainText) {
+            // HTML Artifact Fix (The extra space bug)
+            // HTML parsers turn formatting tags into artificial spaces. 
+            // We check the raw plain-text payload. If the pure clipboard lacks leading/trailing spaces, strip them.
+            const rawPlainText = clipboardData.getData('text') || "";
+            if (rawPlainText) {
                 if (!/^\s/.test(rawPlainText)) text = text.trimStart();
                 if (!/\s$/.test(rawPlainText)) text = text.trimEnd();
             } else {
                 text = text.trimEnd();
             }
+        } else if (text) {
+            // PLAIN TEXT OVERRIDE
+            // Only normalize line endings and control chars. 
+            // Do NOT trim anything so intentional spacing/indentation is preserved.
+            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+        }
 
-            console.log("Stage 7 (Final Clean Text):", JSON.stringify(text));
-    
-            // Stage 8: Insertion and UI Update
+        if (text) {
             const start = editing.selectionStart;
             const end = editing.selectionEnd;
             editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
             editing.selectionStart = editing.selectionEnd = start + text.length;
-    
-            // Force the highlight and visibility update immediately
+            
             update(editing.value);
-            console.log("--- PASTE PROCESS COMPLETE ---");
+            sync_scroll(editing);
         }
-        sync_scroll(editing);
-        }, 0);
     }
         
     // --- SYNTAX HIGHLIGHTING ---
@@ -895,7 +865,6 @@
 
     document.getElementById('editor-wrapper').addEventListener('mouseenter', () => {
         if (document.activeElement !== editing) {
-            console.log("Syncing clipboard via focus poke...");
             editing.focus({ preventScroll: true });
         }
     });
@@ -1078,6 +1047,8 @@
     
     // --- INIT ---
     window.addEventListener('load', function() {
+        pingHost(); // Initiate connection test
+
         const codeParam = urlParams.get('code');
         if (codeParam) {
             try {

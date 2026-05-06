@@ -424,8 +424,8 @@
         if (hostConnected && autoSyncEnabled) {
             // Auto Sync is Active
             syncBanner.className = 'banner-active visible';
-            syncBannerText.innerText = 'Auto-sync with answer box active';
-            btnToggleSync.innerText = 'Turn off auto-sync';
+            syncBannerText.innerText = 'Auto-copy to answer box';
+            btnToggleSync.innerText = 'Turn off';
             btnToggleSync.style.display = 'inline-block';
             btnToggleSync.onclick = () => { 
                 autoSyncEnabled = false; 
@@ -438,7 +438,7 @@
             
             if (hostConnected) {
                 // If connected but disabled, allow them to re-enable
-                btnToggleSync.innerText = 'Turn on auto-sync';
+                btnToggleSync.innerText = 'Turn on auto-copy';
                 btnToggleSync.style.display = 'inline-block';
                 btnToggleSync.onclick = () => { 
                     autoSyncEnabled = true; 
@@ -616,6 +616,13 @@
             }
         }
         else if (e.key == "Enter") {
+            // Check for Ctrl+Enter or Cmd+Enter to run the code
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                runCode();
+                return;
+            }
+
             e.preventDefault();
             const lineStart = val.lastIndexOf('\n', start - 1) + 1;
             const currentLine = val.substring(lineStart, start);

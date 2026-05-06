@@ -319,7 +319,7 @@
 
 <div id="sync-banner">
     <span id="sync-banner-text"></span>
-    <button id="btn-toggle-sync" class="btn-banner">Turn off auto-sync</button>
+    <button id="btn-toggle-sync" class="btn-banner">Turn off</button>
 </div>
 
 <div class="main-toolbar">
@@ -434,7 +434,7 @@
         } else if (isDirty) {
             // Unsaved Changes Warning
             syncBanner.className = 'banner-warning visible';
-            syncBannerText.innerText = 'Warning: Code has unsaved changes. Sync manually.';
+            syncBannerText.innerText = 'Warning: Code has unsaved changes. Remember to copy final code to the answer box.';
             
             if (hostConnected) {
                 // If connected but disabled, allow them to re-enable

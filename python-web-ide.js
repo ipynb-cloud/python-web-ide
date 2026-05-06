@@ -1,0 +1,1047 @@
+/**
+ * PythonEditor.js
+ * A self-contained, embeddable Python code editor using Skulpt.
+ * Generates an isolated iframe environment automatically.
+ */
+const RAW_EDITOR_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Code Editor</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"><\/script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"><\/script>
+
+    <style>
+        /* --- GENERAL LAYOUT --- */
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2e2e2e; 
+            color: #d4d4d4;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Warning Banner */
+        #sync-warning {
+            height: 35px;
+            background-color: #a31515;
+            color: white;
+            display: none; 
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+            z-index: 100;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        #sync-warning.visible { display: flex; }
+
+        /* Main Toolbar (Layout controls) */
+        .main-toolbar {
+            height: 40px;
+            background-color: #333333;
+            border-bottom: 1px solid #1e1e1e;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .main-title { font-weight: 600; color: #9cdcfe; font-size: 14px; }
+        
+        .toolbar-left {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .toolbar-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* Container for Editor/Output/Resizer */
+        .container {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+            position: relative;
+            /* Default to Vertical Split (row) */
+            flex-direction: row; 
+        }
+
+        /* --- PANELS --- */
+        #editor-wrapper, #output-wrapper {
+            background-color: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* Flex basis handles sizing */
+            flex-basis: 50%; 
+            flex-grow: 1; 
+            min-width: 0;
+            min-height: 0;
+        }
+
+        /* Resizer Handle */
+        .resizer {
+            background-color: #444;
+            flex-shrink: 0;
+            z-index: 10;
+            transition: background-color 0.2s;
+        }
+        .resizer:hover, .resizer.active { background-color: #0e639c; }
+
+        /* Specifics for Vertical Split (Default) */
+        .container.vertical-split { flex-direction: row; }
+        .container.vertical-split .resizer {
+            width: 8px;
+            height: 100%;
+            cursor: col-resize;
+            border-left: 1px solid #111;
+            border-right: 1px solid #111;
+        }
+
+        /* Specifics for Horizontal Split */
+        .container.horizontal-split { flex-direction: column; }
+        .container.horizontal-split .resizer {
+            width: 100%;
+            height: 8px;
+            cursor: row-resize;
+            border-top: 1px solid #111;
+            border-bottom: 1px solid #111;
+        }
+
+        /* Specifics for Hidden Output */
+        .container.output-hidden #output-wrapper { display: none; }
+        .container.output-hidden .resizer { display: none; }
+        .container.output-hidden #editor-wrapper { flex-basis: 100%; max-width: 100%; height: 100%; }
+        
+        /* Show the 'Show Output' button only when hidden */
+        .btn-show-output { display: none; }
+        .container.output-hidden .btn-show-output { display: inline-flex !important; }
+
+        .panel-header {
+            background-color: #252526;
+            padding: 8px 15px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #cccccc;
+            border-bottom: 1px solid #333;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-controls {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        #custom-editor-container {
+            display: flex;
+            flex-grow: 1;
+            position: relative;
+            height: 100%;
+            overflow: hidden; 
+        }
+
+        #line-numbers {
+            width: 50px;
+            height: 100%;
+            background-color: #1e1e1e;
+            border-right: 1px solid #333;
+            text-align: right;
+            padding: 15px 10px 15px 0; 
+            box-sizing: border-box;
+            color: #606060;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow: hidden;
+            flex-shrink: 0;
+            user-select: none;
+        }
+
+        #code-overlay-wrapper {
+            flex-grow: 1;
+            position: relative;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #highlighting, #editing {
+            margin: 0;
+            padding: 15px 5px; 
+            border: 0;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            box-sizing: border-box;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            tab-size: 4;
+            white-space: pre; 
+            overflow: auto;
+        }
+
+        #highlighting {
+            z-index: 1;
+            background-color: #1e1e1e;
+            pointer-events: none; 
+        }
+        #highlighting code { font-family: inherit; }
+
+        #editing {
+            z-index: 2;
+            color: transparent;        
+            background: transparent;  
+            caret-color: #d4d4d4;     
+            outline: none;
+            resize: none;             
+        }
+
+        #editing::placeholder {
+            color: #6a9955;
+            font-style: italic;
+            opacity: 0.6;
+        }
+
+        /* --- SYNTAX HIGHLIGHTING COLORS --- */
+        .token-keyword  { color: #569cd6; } 
+        .token-string   { color: #ce9178; } 
+        .token-fstring  { color: #f44747; } 
+        .token-comment  { color: #6a9955; font-style: italic; } 
+        .token-number   { color: #b5cea8; } 
+        .token-decorator{ color: #c586c0; } 
+
+        /* --- TOOLBAR & OUTPUT --- */
+        .toolbar {
+            padding: 8px;
+            background-color: #252526;
+            border-bottom: 1px solid #333;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            border: none;
+            padding: 6px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #cccccc;
+            background-color: #3c3c3c;
+        }
+        button:hover { background-color: #4c4c4c; }
+
+        .btn-run { background-color: #0e639c; color: white; }
+        .btn-run:hover { background-color: #1177bb; }
+        
+        .btn-submit { background-color: #28a745; color: white; }
+        .btn-submit:hover { background-color: #2fb94e; }
+        
+        .btn-share { background-color: #3c3c3c; color: #9cdcfe; }
+
+        .btn-layout { background-color: #444; }
+
+        .btn-sm {
+            padding: 2px 8px; 
+            font-size: 11px;
+        }
+        
+        /* Specific style for the Show Output button in editor header */
+        .btn-show-output {
+            background-color: #0e639c;
+            color: white;
+            padding: 3px 8px;
+            font-size: 11px;
+            border-radius: 2px;
+        }
+        .btn-show-output:hover { background-color: #1177bb; }
+
+        #output {
+            flex-grow: 1;
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            color: #cccccc;
+            background-color: #1e1e1e;
+        }
+
+        .output-error { color: #f48771; }
+        .output-success { color: #4ec9b0; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
+
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="sync-warning">
+    Warning: Code has been updated - remember to copy your code into the answer box.
+</div>
+
+<div class="main-toolbar">
+    <div class="toolbar-left">
+        <div class="main-title">PYTHON EDITOR</div>
+        <!-- <button id="btn-share" class="btn-share btn-sm" onclick="shareCode()">Share Link</button> -->
+    </div>
+    <div class="toolbar-actions">
+        <button class="btn-layout" onclick="toggleLayout()" title="Change Layout">
+            <span id="layout-icon">◫</span> Layout
+        </button>
+        <button class="btn-run" onclick="runCode()">► Run Code</button>
+        <button class="btn-submit" onclick="submitToMoodle()">Copy to Answer Box</button>
+    </div>
+</div>
+
+<div class="container vertical-split" id="main-container">
+    
+    <div id="editor-wrapper">
+        <div class="panel-header">
+            <span>CODE</span>
+            <button class="btn-show-output" onclick="showTerminal()">Show Output Panel</button>
+        </div>
+        <div id="custom-editor-container">
+            <div id="line-numbers">1</div>
+            <div id="code-overlay-wrapper">
+                <pre id="highlighting" aria-hidden="true"><code id="highlighting-content"></code></pre>
+                <textarea id="editing" spellcheck="false" placeholder="# try and test code here"
+                    oninput="update(this.value); sync_scroll(this);" 
+                    onscroll="sync_scroll(this);" 
+                    onkeydown="handleKeyDown(event)"
+                    onpaste="handlePaste(event)"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="resizer" id="resizer"></div>
+
+    <div id="output-wrapper">
+        <div class="panel-header">
+            <span>OUTPUT</span>
+            <div class="panel-controls">
+                <button class="btn-sm btn-clear" onclick="clearOutput()">Clear Output</button>
+                <button class="btn-sm" onclick="hideTerminal()">Hide Output Panel</button>
+            </div>
+        </div>
+
+        <div id="output"></div>
+    </div>
+</div>
+
+<script>
+    // --- VARIABLES & SETUP ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const QUESTION_ID = urlParams.get('id') || "default_question"; 
+
+    const editing = document.getElementById('editing');
+    const highlightingContent = document.getElementById('highlighting-content');
+    const highlighting = document.getElementById('highlighting');
+    const lineNumbers = document.getElementById('line-numbers');
+    const syncWarning = document.getElementById('sync-warning');
+    const shareBtn = document.getElementById('btn-share');
+    const outputDiv = document.getElementById("output");
+    
+    // Layout Elements
+    const container = document.getElementById('main-container');
+    const editorWrapper = document.getElementById('editor-wrapper');
+    const outputWrapper = document.getElementById('output-wrapper');
+    const resizer = document.getElementById('resizer');
+    const layoutIcon = document.getElementById('layout-icon');
+
+    const storageKey = "python_editor_" + QUESTION_ID;
+    const dirtyKey = "python_dirty_" + QUESTION_ID;
+    const layoutKey = "python_layout_" + QUESTION_ID;
+    
+    let isDirty = false;
+
+    // --- EDITOR LOGIC (HIGHLIGHTING & SYNC) ---
+
+    // Now accepts optional shouldMarkDirty (defaults to true)
+    function update(text, shouldMarkDirty = true) {
+        let result_text = text;
+        if(text[text.length-1] == "\\n") result_text += " "; 
+        highlightingContent.innerHTML = highlightPython(result_text);
+        updateLineNumbers(text);
+        // Force a scroll sync to ensure the overlay aligns with the cursor
+        sync_scroll(editing);
+        if (shouldMarkDirty) {
+            setDirty(true);
+        }
+        localStorage.setItem(storageKey, text);
+    }
+
+    function setDirty(dirty) {
+        isDirty = dirty;
+        localStorage.setItem(dirtyKey, dirty ? "true" : "false");
+        if (dirty) syncWarning.classList.add('visible');
+        else syncWarning.classList.remove('visible');
+    }
+
+    function updateLineNumbers(text) {
+        const lines = text.split('\\n').length;
+        lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+    }
+
+    function sync_scroll(element) {
+        highlighting.scrollTop = element.scrollTop;
+        highlighting.scrollLeft = element.scrollLeft;
+        lineNumbers.scrollTop = element.scrollTop;
+    }
+
+    // --- SMART TYPING HELPERS ---
+
+    function getLineIndent(text, index) {
+        const lineStart = text.lastIndexOf('\\n', index - 1) + 1;
+        let i = lineStart;
+        while (i < text.length && (text[i] === ' ' || text[i] === '\\t')) {
+            i++;
+        }
+        return text.substring(lineStart, i);
+    }
+
+    function findMatchingBracket(text, closeIndex) {
+        const closeChar = text[closeIndex];
+        const openChar = closeChar === ')' ? '(' : (closeChar === ']' ? '[' : '{');
+        let depth = 1;
+        
+        for (let i = closeIndex - 1; i >= 0; i--) {
+            const c = text[i];
+            if (c === closeChar) depth++;
+            else if (c === openChar) depth--;
+            if (depth === 0) return i;
+        }
+        return null;
+    }
+
+    function analyzeLineBrackets(line) {
+        let stack = [];
+        let inString = false;
+        let stringChar = null;
+        
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (inString) {
+                if (char === stringChar && line[i-1] !== '\\\\') inString = false;
+                continue;
+            }
+            if (char === '"' || char === "'") {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+            if (char === '#') break; 
+            
+            if (['(', '[', '{'].includes(char)) {
+                stack.push({ char, index: i });
+            } else if ([']', ')', '}'].includes(char)) {
+                if (stack.length > 0) {
+                    const last = stack[stack.length - 1];
+                    if ((char === ']' && last.char === '[') ||
+                        (char === ')' && last.char === '(') ||
+                        (char === '}' && last.char === '{')) {
+                        stack.pop();
+                    }
+                }
+            }
+        }
+        return stack;
+    }
+
+    function handleKeyDown(e) {
+        const textarea = e.target;
+        const val = textarea.value;
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+
+        if(e.key == "Tab") {
+            e.preventDefault();
+            textarea.value = val.substring(0, start) + "    " + val.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + 4;
+            update(textarea.value);
+        } 
+        else if (e.key == "Backspace") {
+            if (start === end && start > 0) {
+                const lineStart = val.lastIndexOf('\\n', start - 1) + 1;
+                const textBeforeCursor = val.substring(lineStart, start);
+                
+                if (/^\\s+$/.test(textBeforeCursor) && textBeforeCursor.length >= 4) {
+                    const fourCharsBefore = val.substring(start - 4, start);
+                    if (fourCharsBefore === "    ") {
+                        e.preventDefault();
+                        textarea.value = val.substring(0, start - 4) + val.substring(end);
+                        textarea.selectionStart = textarea.selectionEnd = start - 4;
+                        update(textarea.value);
+                    }
+                }
+            }
+        }
+        else if (e.key == "Enter") {
+            e.preventDefault();
+            const lineStart = val.lastIndexOf('\\n', start - 1) + 1;
+            const currentLine = val.substring(lineStart, start);
+            const trimmed = currentLine.trimEnd();
+            
+            let nextIndent = "";
+            
+            // Analyze the current line for unclosed brackets
+            const bracketStack = analyzeLineBrackets(currentLine);
+
+            // Strip trailing comments for colon check logic
+            // e.g. "def foo(): # comment" -> "def foo():"
+            const lineWithoutComment = currentLine.split('#')[0].trimEnd();
+
+            // STRATEGY 1: Hanging Indent (Unclosed brackets present)
+            if (bracketStack.length > 0) {
+                const lastOpen = bracketStack[bracketStack.length - 1];
+                nextIndent = " ".repeat(lastOpen.index + 1);
+            }
+            // STRATEGY 2: Line ends with Colon (Start of block), ignoring comments
+            else if (lineWithoutComment.endsWith(":")) {
+                nextIndent = getLineIndent(val, start) + "    ";
+            }
+            // STRATEGY 3: Line ends with closing bracket
+            else if ([')', ']', '}'].includes(trimmed.charAt(trimmed.length - 1))) {
+                const lastChar = trimmed.charAt(trimmed.length - 1);
+                const closeIndex = lineStart + currentLine.lastIndexOf(lastChar);
+                const openIndex = findMatchingBracket(val, closeIndex);
+                
+                if (openIndex !== null) {
+                    nextIndent = getLineIndent(val, openIndex);
+                } else {
+                    nextIndent = getLineIndent(val, start);
+                }
+            }
+            // STRATEGY 4: Standard Indent
+            else {
+                 nextIndent = getLineIndent(val, start);
+            }
+
+            const insertion = "\\n" + nextIndent;
+            textarea.value = val.substring(0, start) + insertion + val.substring(end);
+            
+            textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
+            update(textarea.value);
+            
+            setTimeout(() => {
+                sync_scroll(textarea);
+            }, 0);
+        }
+    }
+
+    function handlePaste(e) {
+        setTimeout(() => {
+        const clipboardData = e.clipboardData || window.clipboardData;
+        console.log("--- START PASTE ANALYSIS ---");
+    
+        let html = clipboardData.getData('text/html');
+        let text = "";
+    
+        if (html && html.trim().length > 0) {
+            console.log("Stage 0 (Raw HTML from SEB):", html);
+            e.preventDefault();
+    
+            // Stage 1: Remove <style> and <script> blocks
+            let processed = html.replace(/<style([\\s\\S]*?)<\\/style>/gi, '');
+            processed = processed.replace(/<script([\\s\\S]*?)<\\/script>/gi, '');
+            console.log("Stage 1 (Post-Style/Script Strip):", processed);
+    
+            // Stage 2: Strip all attributes (Fixes the bulky <pre style="...">)
+            // This turns <pre id="..." style="..."> into <pre>
+            processed = processed.replace(/(<[a-z0-9]+)\\s+[^>]+(?=>)/gi, '$1');
+            console.log("Stage 2 (Post-Attribute Strip):", processed);
+    
+            // Stage 3: Convert <br> to newlines
+            processed = processed.replace(/<br\\s*\\/?>/gi, "\\n");
+            console.log("Stage 3 (Post-BR Conversion):", processed);
+    
+            // Stage 4: Convert structural closing tags to newlines
+            processed = processed.replace(/<\\/div>/ig, '\\n');
+            processed = processed.replace(/<\\/p>/ig, '\\n');
+            processed = processed.replace(/<\\/li>/ig, '\\n');
+            processed = processed.replace(/<li>/ig, '  * ');
+            processed = processed.replace(/<\\/ul>/ig, '\\n');
+            console.log("Stage 4 (Post-Structural Conversion):", processed);
+    
+            // Stage 5: Strip all remaining tags (like <pre> and <div>)
+            processed = processed.replace(/<[^>]+>/ig, '');
+            console.log("Stage 5 (Post-Tag Strip):", processed);
+    
+            // Stage 6: Decode HTML Entities (Essential for symbols like <, >, &)
+            text = processed
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&amp;/g, '&')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'");
+            console.log("Stage 6 (Post-Entity Decoding):", text);
+        } else {
+            console.log("Stage 0: No HTML found in SEB buffer. Falling back to plain text.");
+            text = clipboardData.getData('text');
+            if (text) {
+                e.preventDefault();
+                console.log("Raw Plain Text:", text);
+            }
+        }
+    
+        if (text) {
+            // Stage 7: SEB/Windows-Specific Normalization
+            // 1. Normalize line endings (\r\n -> \n)
+            text = text.replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n");
+            // 2. Strip non-printable control characters often added by SEB/Chromium hooks
+            text = text.replace(/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/g, "");
+            text = text.trimEnd()
+
+            console.log("Stage 7 (Final Clean Text):", JSON.stringify(text));
+    
+            // Stage 8: Insertion and UI Update
+            const start = editing.selectionStart;
+            const end = editing.selectionEnd;
+            editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
+            editing.selectionStart = editing.selectionEnd = start + text.length;
+    
+            // Force the highlight and visibility update immediately
+            update(editing.value);
+            console.log("--- PASTE PROCESS COMPLETE ---");
+        }
+        sync_scroll(editing);
+        }, 0);
+    }
+        
+    // --- SYNTAX HIGHLIGHTING ---
+    function unescapeHtml(text) {
+        return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    }
+
+    function highlightPython(code) {
+        code = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const tokenRegex = /((?:#).*?\$)|((?:\\b[fF])?(?:"(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'))|\\b(def|class|import|from|return|if|else|elif|while|for|in|print|try|except|raise|True|False|None|as|with|finally|yield|lambda|pass|break|continue|and|or|not|is|self)\\b|(\\b\\d+\\b)|(@\\w+)/gm;
+        
+        return code.replace(tokenRegex, function(match, comment, string, keyword, number, decorator) {
+            if (comment) return \`<span class="token-comment">\${comment}</span>\`;
+            if (string) {
+                if (string.startsWith('f') || string.startsWith('F')) {
+                    const formattedString = string.replace(/\\{.*?\\}/g, function(interp) {
+                        const inner = interp.slice(1, -1);
+                        return \`<span style="color: #d4d4d4;">{\${highlightPython(unescapeHtml(inner))}}</span>\`;
+                    });
+                    return \`<span class="token-fstring">\${formattedString}</span>\`; 
+                }
+                return \`<span class="token-string">\${string}</span>\`;
+            }
+            if (keyword) return \`<span class="token-keyword">\${keyword}</span>\`;
+            if (number) return \`<span class="token-number">\${number}</span>\`;
+            if (decorator) return \`<span class="token-decorator">\${decorator}</span>\`;
+            return match;
+        });
+    }
+
+    // --- LAYOUT & RESIZING LOGIC ---
+    let layoutMode = 0; // 0: Vertical, 1: Horizontal, 2: Hidden Output
+    
+    // Toggle Button Logic
+    function toggleLayout(forceMode = -1) {
+        if (forceMode !== -1) {
+            layoutMode = parseInt(forceMode);
+        } else {
+            layoutMode = (layoutMode + 1) % 3;
+        }
+
+        // Save state
+        localStorage.setItem(layoutKey, layoutMode);
+
+        // Reset Styles
+        container.className = "container";
+        editorWrapper.style.flexBasis = "";
+        outputWrapper.style.flexBasis = "";
+        editorWrapper.style.height = ""; 
+        outputWrapper.style.height = "";
+        editorWrapper.style.width = ""; 
+        outputWrapper.style.width = "";
+
+        if (layoutMode === 0) {
+            container.classList.add("vertical-split");
+            layoutIcon.innerText = "◫"; 
+            resizer.style.display = "block";
+        } else if (layoutMode === 1) {
+            container.classList.add("horizontal-split");
+            layoutIcon.innerText = "☰"; 
+            resizer.style.display = "block";
+        } else {
+            container.classList.add("output-hidden");
+            layoutIcon.innerText = "□"; 
+        }
+    }
+    
+    function hideTerminal() {
+        toggleLayout(2);
+    }
+    
+    function showTerminal() {
+        toggleLayout(0);
+    }
+
+    // Resizer Mouse Logic
+    let isResizing = false;
+
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        resizer.classList.add('active');
+        document.body.style.cursor = layoutMode === 0 ? 'col-resize' : 'row-resize';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+
+        const containerRect = container.getBoundingClientRect();
+        
+        if (layoutMode === 0) {
+            let x = e.clientX - containerRect.left;
+            let percent = (x / containerRect.width) * 100;
+            if (percent < 10) percent = 10;
+            if (percent > 90) percent = 90;
+            
+            editorWrapper.style.flexBasis = percent + '%';
+            outputWrapper.style.flexBasis = (100 - percent) + '%';
+        } else if (layoutMode === 1) {
+            let y = e.clientY - containerRect.top;
+            let percent = (y / containerRect.height) * 100;
+             if (percent < 10) percent = 10;
+             if (percent > 90) percent = 90;
+
+             editorWrapper.style.flexBasis = percent + '%';
+             outputWrapper.style.flexBasis = (100 - percent) + '%';
+        }
+    });
+
+    document.getElementById('editor-wrapper').addEventListener('mouseenter', () => {
+        if (document.activeElement !== editing) {
+            console.log("Syncing clipboard via focus poke...");
+            editing.focus({ preventScroll: true });
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            resizer.classList.remove('active');
+            document.body.style.cursor = 'default';
+        }
+    });
+
+    // --- SKULPT EXECUTION ---
+    function outf(text) { 
+        var span = document.createElement('span');
+        span.innerText = text;
+        outputDiv.appendChild(span);
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    } 
+    function builtinRead(x) {
+        if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) throw "Err";
+        return Sk.builtinFiles["files"][x];
+    }
+    
+    function runCode() { 
+        // 1. Clear the output immediately
+        outputDiv.innerHTML = "";
+        
+        // Safety Check: Ensure Skulpt is loaded
+        if (typeof Sk === 'undefined') {
+            var s = document.createElement('span');
+            s.className = 'output-error';
+            s.innerText = "\\nError: Python engine is still loading. Please try again in a moment.";
+            outputDiv.appendChild(s);
+            return;
+        }
+
+        // 2. Reveal panel if hidden
+        if (layoutMode === 2) {
+            toggleLayout(0);
+        }
+
+        // 3. Run code after a very short delay to create the visual sequence
+        setTimeout(() => {
+            Sk.configure({ output: outf, read: builtinRead, __future__: Sk.python3 }); 
+            Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, editing.value, true))
+            .then(() => {
+                var s = document.createElement('span');
+                s.className = 'output-success';
+                s.innerText = "\\n>>> Finished successfully.";
+                outputDiv.appendChild(s);
+                outputDiv.scrollTop = outputDiv.scrollHeight;
+            }, (err) => {
+                var s = document.createElement('span');
+                s.className = 'output-error';
+                s.innerText = "\\n" + err.toString();
+                outputDiv.appendChild(s);
+                outputDiv.scrollTop = outputDiv.scrollHeight;
+            });
+        }, 150);
+    }
+
+    function clearOutput() { outputDiv.innerHTML = ""; }
+
+    function shareCode() {
+        const code = editing.value;
+        const base64Code = btoa(encodeURIComponent(code));
+        let baseUrl = window.location.href.split('?')[0];
+        const shareUrl = baseUrl + '?code=' + base64Code;
+
+        const tempInput = document.createElement("textarea");
+        tempInput.value = shareUrl;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try {
+            document.execCommand("copy");
+        } catch (e) {
+            console.error("Clipboard copy failed");
+        }
+        document.body.removeChild(tempInput);
+
+        const oldText = shareBtn.innerText;
+        shareBtn.innerText = "✓ Link Copied";
+        setTimeout(() => shareBtn.innerText = "Share Link", 1000);
+    }
+
+    function syncWithMoodle(code) {
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'moodle-submit-code', content: code }, '*');
+        }
+    }
+    
+    function submitToMoodle() {
+        const code = editing.value;
+
+        // Sync with Moodle
+        syncWithMoodle(code);
+
+        const tempInput = document.createElement("textarea");
+        tempInput.value = code;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try {
+            document.execCommand("copy");
+            const btn = document.querySelector('.btn-submit');
+            const oldText = btn.innerText;
+            btn.innerText = "✓ Copied";
+            setTimeout(() => btn.innerText = oldText, 1000);
+        } catch (e) {
+            console.error("Clipboard copy failed");
+        }
+        document.body.removeChild(tempInput);
+        setDirty(false);
+    }
+
+    // --- PASTE EVENT LISTENER (FROM PARENT WINDOW) ---
+    window.addEventListener('message', function(e) {
+        // 1. Verify this is our specific message type
+        if (e.data && e.data.type === 'insert_starter_code') {
+            // 2. Extract the text from the payload
+            const text = e.data.text;
+            
+            // (Ensure it's a string just in case)
+            if (typeof text === 'string') {
+                const start = editing.selectionStart;
+                const end = editing.selectionEnd;
+                
+                // Insert text at the current cursor position
+                editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
+                
+                // Move cursor to the end of the pasted text
+                editing.selectionStart = editing.selectionEnd = start + text.length;
+                
+                // Refocus, update syntax highlighting, and sync scroll
+                editing.focus();
+                update(editing.value);
+                sync_scroll(editing);
+            }
+        }
+    });
+
+    
+    // --- INIT ---
+    window.addEventListener('load', function() {
+        const codeParam = urlParams.get('code');
+        if (codeParam) {
+            try {
+                const decodedCode = decodeURIComponent(atob(codeParam));
+                editing.value = decodedCode;
+                update(decodedCode, false);
+                setDirty(false);
+            } catch (e) { console.error(e); }
+        } else {
+            const savedCode = localStorage.getItem(storageKey);
+            const savedDirty = localStorage.getItem(dirtyKey);
+
+            if (savedCode && savedCode.trim() !== "") {
+                editing.value = savedCode;
+                // Don't mark dirty on initial load from storage
+                update(savedCode, false);
+            } else {
+                update(editing.value, false);
+            }
+
+            // Restore dirty state explicitly
+            if (savedDirty === "true") {
+                setDirty(true);
+            } else {
+                setDirty(false);
+            }
+        }
+        
+        // Load saved layout
+        const savedLayout = localStorage.getItem(layoutKey);
+        if (savedLayout !== null) {
+            toggleLayout(parseInt(savedLayout));
+        }
+    });
+<\/script>
+
+</body>
+</html>`;
+
+class PythonEditor {
+    /**
+     * Initializes the Python Editor.
+     * @param {Object} options Configuration options.
+     * @param {string|HTMLElement} options.container CSS selector or DOM element to mount the editor.
+     * @param {string} [options.id='default_editor'] Unique identifier for saving code to localStorage.
+     * @param {string} [options.height='500px'] CSS height for the editor iframe.
+     * @param {string} [options.starterCode=''] Python code to load into empty editors.
+     * @param {Function} [options.onChange=null] Callback fired when the editor content changes.
+     */
+    constructor(options) {
+        this.container = typeof options.container === 'string' ? 
+            document.querySelector(options.container) : options.container;
+            
+        if (!this.container) {
+            console.error("PythonEditor: Container element not found.");
+            return;
+        }
+
+        this.id = options.id || 'default_editor';
+        this.height = options.height || '500px';
+        this.starterCode = options.starterCode || '';
+        this.onChange = options.onChange || null;
+        
+        this.iframe = null;
+        this.init();
+    }
+
+    init() {
+        let htmlContent = RAW_EDITOR_HTML;
+
+        // Automatically configure the unique ID for the injected iframe
+        htmlContent = htmlContent.replace(
+            /const QUESTION_ID = urlParams\.get\('id'\) \|\| "default_question";/, 
+            'const QUESTION_ID = "' + this.id + '";'
+        );
+
+        // Inject the invisible communication bridge layer into the iframe right before it loads
+        // This ensures your original code isn't permanently modified but still talks to our JS library wrapper
+        const bridgeScript = `<script>
+            // Library Bridge Overlay
+            const _originalUpdate = window.update;
+            window.update = function(text, shouldMarkDirty) {
+                if (_originalUpdate) _originalUpdate(text, shouldMarkDirty);
+                window.parent.postMessage({ type: 'editor_change', id: "${this.id}", code: text }, '*');
+            };
+
+            window.addEventListener('message', function(e) {
+                if (e.data && e.data.type === 'init_code') {
+                    const savedCode = localStorage.getItem("python_editor_" + "${this.id}");
+                    if (!savedCode || savedCode.trim() === "") {
+                        const ed = document.getElementById('editing');
+                        if (ed) ed.value = e.data.text;
+                        if (window.update) window.update(e.data.text, false);
+                        if (window.setDirty) window.setDirty(false);
+                    }
+                }
+            });
+
+            // Signal ready state back to the parent library
+            window.parent.postMessage({ type: 'editor_ready', id: "${this.id}" }, '*');
+        <\/script>`;
+        
+        htmlContent = htmlContent.replace('</body>', bridgeScript + '\n</body>');
+
+        // Render the injected HTML safely as an iframe blob
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        this.iframe = document.createElement('iframe');
+        this.iframe.src = url;
+        this.iframe.style.width = '100%';
+        this.iframe.style.height = this.height;
+        this.iframe.style.border = 'none';
+        this.iframe.style.display = 'block';
+        this.iframe.allow = "clipboard-read; clipboard-write";
+
+        this.container.innerHTML = ''; 
+        this.container.appendChild(this.iframe);
+
+        // Setup communication listener receiving messages from our bridge above
+        this.messageListener = (e) => {
+            if (!e.data || e.data.id !== this.id) return;
+
+            if (e.data.type === 'editor_change' && this.onChange) {
+                this.onChange(e.data.code);
+            }
+            
+            if (e.data.type === 'editor_ready') {
+                if (this.starterCode) {
+                    this.iframe.contentWindow.postMessage({
+                        type: 'init_code',
+                        text: this.starterCode
+                    }, '*');
+                }
+            }
+        };
+        
+        window.addEventListener('message', this.messageListener);
+    }
+
+    destroy() {
+        if (this.messageListener) window.removeEventListener('message', this.messageListener);
+        if (this.iframe) this.iframe.remove();
+    }
+}
+
+// Export support for modern bundlers or attach to window for standard browser use
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = PythonEditor;
+} else {
+    window.PythonEditor = PythonEditor;
+}

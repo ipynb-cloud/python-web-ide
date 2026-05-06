@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Python Code Editor</title>
     
+    <!-- Added 'defer' so these large scripts download in the background without blocking the UI paint -->
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
 
@@ -373,8 +374,12 @@
 
 <script>
     // --- VARIABLES & SETUP ---
-    const urlParams = new URLSearchParams(window.location.search);
-    const QUESTION_ID = urlParams.get('id') || "default_question"; 
+    // Support both standard query strings (?id=1) and cache-friendly hashes (#id=1)
+    const queryParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const getParam = (key) => hashParams.get(key) || queryParams.get(key);
+
+    const QUESTION_ID = getParam('id') || "default_question"; 
 
     const editing = document.getElementById('editing');
     const highlightingContent = document.getElementById('highlighting-content');
@@ -947,8 +952,10 @@
     function shareCode() {
         const code = editing.value;
         const base64Code = btoa(encodeURIComponent(code));
-        let baseUrl = window.location.href.split('?')[0];
-        const shareUrl = baseUrl + '?code=' + base64Code;
+        // Strip both query and hash fragments to get the clean base URL
+        let baseUrl = window.location.href.split('?')[0].split('#')[0];
+        // Use a hash for the share URL so it remains cache-friendly
+        const shareUrl = baseUrl + '#code=' + base64Code;
 
         const tempInput = document.createElement("textarea");
         tempInput.value = shareUrl;
@@ -1051,8 +1058,11 @@
     
     // --- INIT ---
     window.addEventListener('load', function() {
-        const codeParam = urlParams.get('code');
-        if (codeParam) {
+        // Yield to the browser's rendering engine so the iframe paints instantly
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                const codeParam = getParam('code');
+                if (codeParam) {
                     try {
                         const decodedCode = decodeURIComponent(atob(codeParam));
                         editing.value = decodedCode;
@@ -1072,23 +1082,23 @@
                     }
 
                     // Restore dirty state explicitly
-            if (savedDirty === "true") {
-                setDirty(true);
-            } else {
-                setDirty(false);
-            }
-        }
-        
-        // Load saved layout
-        const savedLayout = localStorage.getItem(layoutKey);
-        if (savedLayout !== null) {
-            toggleLayout(parseInt(savedLayout));
-        }
+                    if (savedDirty === "true") {
+                        setDirty(true);
+                    } else {
+                        setDirty(false);
+                    }
+                }
+                
+                // Load saved layout
+                const savedLayout = localStorage.getItem(layoutKey);
+                if (savedLayout !== null) {
+                    toggleLayout(parseInt(savedLayout));
+                }
 
-        // Asynchronously ping host after local storage is loaded and UI is painted
-        setTimeout(() => {
-            pingHost();
-        }, 50);
+                // Asynchronously ping host after local storage is loaded and UI is painted
+                pingHost();
+            }, 10);
+        });
     });
 </script>
 

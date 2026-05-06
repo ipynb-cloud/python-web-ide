@@ -404,7 +404,9 @@
     // State management for Sync Protocol
     let hostConnected = false;
     let autoSyncEnabled = false;
-    let autoSyncTimer = null;
+    
+    // Performance Optimization variables
+    let currentLineCount = 0;
 
     // --- UTILS ---
     function generateHash(str) {
@@ -480,26 +482,31 @@
     function update(text, shouldMarkDirty = true) {
         let result_text = text;
         if(text[text.length-1] == "\n") result_text += " "; 
+        
+        // Execute Syntax Highlighting
         highlightingContent.innerHTML = highlightPython(result_text);
+        
+        // Update Line numbers (Optimized to only redraw on line count changes)
         updateLineNumbers(text);
+        
         // Force a scroll sync to ensure the overlay aligns with the cursor
         sync_scroll(editing);
         
         if (shouldMarkDirty) {
             setDirty(true);
             
-            // Debounce the auto-sync to avoid spamming the host on every keystroke
+            // Immediately auto-sync to the host on every keystroke
             if (hostConnected && autoSyncEnabled) {
-                clearTimeout(autoSyncTimer);
-                autoSyncTimer = setTimeout(() => {
-                    triggerAutoSync();
-                }, 500); 
+                triggerAutoSync();
             }
         }
+        
+        // Synchronously write to localStorage on every keystroke
         localStorage.setItem(storageKey, text);
     }
 
     function setDirty(dirty) {
+        if (isDirty === dirty) return; // Prevent redundant DOM layout thrashing
         isDirty = dirty;
         localStorage.setItem(dirtyKey, dirty ? "true" : "false");
         updateBannerUI();
@@ -507,7 +514,12 @@
 
     function updateLineNumbers(text) {
         const lines = text.split('\n').length;
-        lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+        
+        // Performance Optimization: Only rebuild DOM if line count actually changes
+        if (lines !== currentLineCount) {
+            lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+            currentLineCount = lines;
+        }
     }
 
     function sync_scroll(element) {

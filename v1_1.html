@@ -647,7 +647,23 @@
             }
             // STRATEGY 2: Line ends with Colon (Start of block), ignoring comments
             else if (lineWithoutComment.endsWith(":")) {
-                nextIndent = getLineIndent(val, start) + "    ";
+                const beforeColon = lineWithoutComment.slice(0, -1).trimEnd();
+                const lastCharBeforeColon = beforeColon.charAt(beforeColon.length - 1);
+                
+                // If the block is starting right after a closed parenthesis/bracket (e.g., `):`)
+                // Base the next indent on the line that OPENED that bracket (e.g. the `def` line)
+                if ([')', ']', '}'].includes(lastCharBeforeColon)) {
+                    const closeIndex = lineStart + currentLine.lastIndexOf(lastCharBeforeColon);
+                    const openIndex = findMatchingBracket(val, closeIndex);
+                    
+                    if (openIndex !== null) {
+                        nextIndent = getLineIndent(val, openIndex) + "    ";
+                    } else {
+                        nextIndent = getLineIndent(val, start) + "    ";
+                    }
+                } else {
+                    nextIndent = getLineIndent(val, start) + "    ";
+                }
             }
             // STRATEGY 3: Line ends with closing bracket
             else if ([')', ']', '}'].includes(trimmed.charAt(trimmed.length - 1))) {
@@ -679,6 +695,9 @@
     }
 
     function handlePaste(e) {
+        // Capture plain text synchronously as clipboard data might be cleared in timeout
+        const rawPlainText = (e.clipboardData || window.clipboardData).getData('text') || "";
+
         setTimeout(() => {
         const clipboardData = e.clipboardData || window.clipboardData;
         console.log("--- START PASTE ANALYSIS ---");
@@ -740,7 +759,16 @@
             text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
             // 2. Strip non-printable control characters often added by SEB/Chromium hooks
             text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-            text = text.trimEnd()
+
+            // Stage 7.5: HTML Artifact Fix (The extra space bug)
+            // HTML parsers often turn formatting tags into artificial leading/trailing spaces.
+            // If the pure plain-text clipboard lacks them, safely strip them out.
+            if (html && html.trim().length > 0 && rawPlainText) {
+                if (!/^\s/.test(rawPlainText)) text = text.trimStart();
+                if (!/\s$/.test(rawPlainText)) text = text.trimEnd();
+            } else {
+                text = text.trimEnd();
+            }
 
             console.log("Stage 7 (Final Clean Text):", JSON.stringify(text));
     
@@ -949,11 +977,9 @@
         }
         document.body.removeChild(tempInput);
 
-        if (shareBtn) {
-            const oldText = shareBtn.innerText;
-            shareBtn.innerText = "✓ Link Copied";
-            setTimeout(() => shareBtn.innerText = "Share Link", 1000);
-        }
+        const oldText = shareBtn.innerText;
+        shareBtn.innerText = "✓ Link Copied";
+        setTimeout(() => shareBtn.innerText = "Share Link", 1000);
     }
 
     function syncWithMoodle(code, type = 'moodle-submit-code') {
@@ -1052,8 +1078,6 @@
     
     // --- INIT ---
     window.addEventListener('load', function() {
-        pingHost(); // Initiate connection test
-
         const codeParam = urlParams.get('code');
         if (codeParam) {
             try {

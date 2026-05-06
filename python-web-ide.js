@@ -966,7 +966,7 @@ class PythonEditor {
         // Automatically configure the unique ID for the injected iframe
         htmlContent = htmlContent.replace(
             /const QUESTION_ID = urlParams\.get\('id'\) \|\| "default_question";/, 
-            'const QUESTION_ID = "' + this.id + '";'
+            `const QUESTION_ID = "${this.id}";`
         );
 
         // Inject the invisible communication bridge layer into the iframe right before it loads

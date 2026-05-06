@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Editor JS Library Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 1. Include your newly hosted library -->
+    <script src="https://python-web-ide.pages.dev/python-web-ide.js"></script>
+
+    <style>
+        /* Custom scrollbar for the output block */
+        #demo-output::-webkit-scrollbar { width: 8px; }
+        #demo-output::-webkit-scrollbar-track { background: #1e1e1e; }
+        #demo-output::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans p-4 md:p-8 min-h-screen flex flex-col">
+
+    <div class="max-w-7xl mx-auto w-full flex-grow flex flex-col">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Python Editor JS</h1>
+                <p class="text-sm text-gray-500 mt-1">Loaded directly from your hosted CDN</p>
+            </div>
+            <div class="mt-4 md:mt-0 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium border border-blue-100">
+                Library Status: <span id="lib-status">Checking...</span>
+            </div>
+        </header>
+
+        <!-- Main Demo Area (Vertical Stacked) -->
+        <div class="flex flex-col gap-8 mb-8 flex-grow">
+            
+            <!-- Top: The Editor -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col w-full">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800">Live Editor Demo</h2>
+                    <span class="text-xs font-medium bg-green-100 text-green-800 px-2.5 py-0.5 rounded-full">Active</span>
+                </div>
+                
+                <!-- 2. Create an empty container for the editor -->
+                <div id="editor-container" class="w-full border border-gray-300 rounded-lg overflow-hidden relative"></div>
+            </div>
+
+            <!-- Bottom: Hook Output -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col w-full">
+                <div class="mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800">onChange Hook Output</h2>
+                    <p class="text-sm text-gray-500">Live code updates broadcasted from the iframe library.</p>
+                </div>
+                <pre id="demo-output" class="bg-[#1e1e1e] text-[#d4d4d4] p-5 rounded-lg overflow-auto text-sm font-mono shadow-inner min-h-[150px] max-h-[300px]"></pre>
+            </div>
+        </div>
+
+        <!-- Documentation / Quick Setup -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h2 class="text-lg font-semibold mb-4 text-gray-800">Quick Setup</h2>
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
+                <pre class="text-sm text-gray-700 font-mono leading-relaxed">
+<span class="text-gray-400">&lt;!-- 1. Include the library script --&gt;</span>
+&lt;<span class="text-blue-600">script</span> <span class="text-green-600">src</span>=<span class="text-yellow-600">"https://python-web-ide.pages.dev/python-web-ide.js"</span>&gt;&lt;/<span class="text-blue-600">script</span>&gt;
+
+<span class="text-gray-400">&lt;!-- 2. Create an empty container --&gt;</span>
+&lt;<span class="text-blue-600">div</span> <span class="text-green-600">id</span>=<span class="text-yellow-600">"my-python-editor"</span>&gt;&lt;/<span class="text-blue-600">div</span>&gt;
+
+<span class="text-gray-400">&lt;!-- 3. Initialize the editor --&gt;</span>
+&lt;<span class="text-blue-600">script</span>&gt;
+  <span class="text-purple-600">const</span> editor = <span class="text-purple-600">new</span> PythonEditor({
+      container: <span class="text-yellow-600">'#my-python-editor'</span>,
+      id: <span class="text-yellow-600">'question_123'</span>,             
+      height: <span class="text-yellow-600">'500px'</span>,                
+      starterCode: <span class="text-yellow-600">'print("Hello")'</span>,  
+      onChange: <span class="text-blue-600">(code)</span> =&gt; {           
+          console.log(<span class="text-yellow-600">"Updated!"</span>, code);
+      }
+  });
+&lt;/<span class="text-blue-600">script</span>&gt;</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Initialize the editor -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusIndicator = document.getElementById('lib-status');
+            
+            // Check if the script loaded successfully
+            if (typeof PythonEditor === 'undefined') {
+                statusIndicator.textContent = "Failed to load!";
+                statusIndicator.classList.replace('text-blue-700', 'text-red-700');
+                statusIndicator.parentElement.classList.replace('bg-blue-50', 'bg-red-50');
+                statusIndicator.parentElement.classList.replace('border-blue-100', 'border-red-100');
+                return;
+            } else {
+                statusIndicator.textContent = "Loaded Successfully ✓";
+                statusIndicator.classList.replace('text-blue-700', 'text-green-700');
+                statusIndicator.parentElement.classList.replace('bg-blue-50', 'bg-green-50');
+                statusIndicator.parentElement.classList.replace('border-blue-100', 'border-green-100');
+            }
+
+            // 3. Initialize the Library
+            const demoOutput = document.getElementById('demo-output');
+            
+            const editorInstance = new PythonEditor({
+                container: '#editor-container',
+                id: 'external_hosted_demo_01', 
+                height: '500px', 
+                starterCode: '# Loaded successfully from python-web-ide.pages.dev!\n\ndef calculate_fibonacci(n):\n    if n <= 0:\n        return []\n    elif n == 1:\n        return [0]\n    \n    sequence = [0, 1]\n    while len(sequence) < n:\n        next_val = sequence[-1] + sequence[-2]\n        sequence.append(next_val)\n    return sequence\n\n# Try running this!\nprint("Fibonacci Sequence:", calculate_fibonacci(10))',
+                onChange: (newCode) => {
+                    // Update output box immediately on typing
+                    demoOutput.textContent = newCode;
+                }
+            });
+        });
+    </script>
+</body>
+</html>

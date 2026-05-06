@@ -398,6 +398,7 @@
     const storageKey = "python_editor_" + QUESTION_ID;
     const dirtyKey = "python_dirty_" + QUESTION_ID;
     const layoutKey = "python_layout_" + QUESTION_ID;
+    const autoSyncPrefKey = "python_editor_autosync_pref"; // Persistent across all questions
     
     let isDirty = false;
     
@@ -429,6 +430,7 @@
             btnToggleSync.style.display = 'inline-block';
             btnToggleSync.onclick = () => { 
                 autoSyncEnabled = false; 
+                localStorage.setItem(autoSyncPrefKey, 'false');
                 updateBannerUI(); 
             };
         } else if (isDirty) {
@@ -442,6 +444,7 @@
                 btnToggleSync.style.display = 'inline-block';
                 btnToggleSync.onclick = () => { 
                     autoSyncEnabled = true; 
+                    localStorage.setItem(autoSyncPrefKey, 'true');
                     triggerAutoSync(); // Push current state immediately
                     updateBannerUI(); 
                 };
@@ -992,7 +995,8 @@
         // 1. Handle Ping Acknowledgment
         if (e.data && e.data.type === 'moodle-pong') {
             hostConnected = true;
-            autoSyncEnabled = true; // Turn on by default since host supports it
+            const savedPref = localStorage.getItem(autoSyncPrefKey);
+            autoSyncEnabled = (savedPref !== 'false'); // True by default unless explicitly saved as 'false'
             updateBannerUI();
         }
 

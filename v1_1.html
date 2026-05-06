@@ -409,6 +409,31 @@
     // Performance Optimization variables
     let currentLineCount = 0;
 
+    // --- UNDO/REDO PRESERVING UTILS ---
+    function insertTextAtCursor(textarea, text) {
+        textarea.focus();
+        // Fallback to value modification ONLY if execCommand fails (preserves undo history)
+        if (!document.execCommand('insertText', false, text)) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + text.length;
+            update(textarea.value);
+        }
+    }
+
+    function deleteSelectedText(textarea) {
+        textarea.focus();
+        // ExecCommand delete is required to preserve history
+        if (!document.execCommand('delete', false, null)) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start;
+            update(textarea.value);
+        }
+    }
+
     // --- UTILS ---
     function generateHash(str) {
         let hash = 0;
@@ -436,7 +461,7 @@
         } else if (isDirty) {
             // Unsaved Changes Warning
             syncBanner.className = 'banner-warning visible';
-            syncBannerText.innerText = 'Warning: Code has unsaved changes. Remember to copy final code to the answer box.';
+            syncBannerText.innerText = 'WARNING: CODE HAS BEEN UPDATED - REMEMBER TO COPY YOUR CODE INTO THE ANSWER BOX.';
             
             if (hostConnected) {
                 // If connected but disabled, allow them to re-enable
@@ -598,9 +623,7 @@
 
         if(e.key == "Tab") {
             e.preventDefault();
-            textarea.value = val.substring(0, start) + "    " + val.substring(end);
-            textarea.selectionStart = textarea.selectionEnd = start + 4;
-            update(textarea.value);
+            insertTextAtCursor(textarea, "    ");
         } 
         else if (e.key == "Backspace") {
             if (start === end && start > 0) {
@@ -611,9 +634,9 @@
                     const fourCharsBefore = val.substring(start - 4, start);
                     if (fourCharsBefore === "    ") {
                         e.preventDefault();
-                        textarea.value = val.substring(0, start - 4) + val.substring(end);
-                        textarea.selectionStart = textarea.selectionEnd = start - 4;
-                        update(textarea.value);
+                        textarea.selectionStart = start - 4;
+                        textarea.selectionEnd = start;
+                        deleteSelectedText(textarea);
                     }
                 }
             }
@@ -683,10 +706,7 @@
             }
 
             const insertion = "\n" + nextIndent;
-            textarea.value = val.substring(0, start) + insertion + val.substring(end);
-            
-            textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
-            update(textarea.value);
+            insertTextAtCursor(textarea, insertion);
             
             setTimeout(() => {
                 sync_scroll(textarea);
@@ -746,12 +766,7 @@
         }
 
         if (text) {
-            const start = editing.selectionStart;
-            const end = editing.selectionEnd;
-            editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
-            editing.selectionStart = editing.selectionEnd = start + text.length;
-            
-            update(editing.value);
+            insertTextAtCursor(editing, text);
             sync_scroll(editing);
         }
     }
@@ -1027,18 +1042,7 @@
             
             // (Ensure it's a string just in case)
             if (typeof text === 'string') {
-                const start = editing.selectionStart;
-                const end = editing.selectionEnd;
-                
-                // Insert text at the current cursor position
-                editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
-                
-                // Move cursor to the end of the pasted text
-                editing.selectionStart = editing.selectionEnd = start + text.length;
-                
-                // Refocus, update syntax highlighting, and sync scroll
-                editing.focus();
-                update(editing.value);
+                insertTextAtCursor(editing, text);
                 sync_scroll(editing);
             }
         }

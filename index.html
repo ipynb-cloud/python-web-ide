@@ -22,12 +22,10 @@
             flex-direction: column;
         }
 
-        /* Top Warning Banner */
-        #sync-warning {
+        /* Top Warning/Sync Banner */
+        #sync-banner {
             height: 35px;
-            background-color: #a31515;
-            color: white;
-            display: none; 
+            display: none; /* Hidden by default */
             align-items: center;
             justify-content: center;
             font-size: 13px;
@@ -37,9 +35,27 @@
             flex-shrink: 0;
             z-index: 100;
             box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: background-color 0.3s ease;
         }
         
-        #sync-warning.visible { display: flex; }
+        #sync-banner.visible { display: flex; }
+        #sync-banner.banner-warning { background-color: #a31515; color: white; }
+        #sync-banner.banner-active { background-color: #28a745; color: white; }
+
+        .btn-banner {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            margin-left: 15px;
+            padding: 4px 10px;
+            font-size: 11px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .btn-banner:hover { background-color: rgba(255, 255, 255, 0.4); }
 
         /* Main Toolbar (Layout controls) */
         .main-toolbar {
@@ -301,8 +317,9 @@
 </head>
 <body>
 
-<div id="sync-warning">
-    Warning: Code has been updated - remember to copy your code into the answer box.
+<div id="sync-banner">
+    <span id="sync-banner-text"></span>
+    <button id="btn-toggle-sync" class="btn-banner">Turn off</button>
 </div>
 
 <div class="main-toolbar">
@@ -363,7 +380,6 @@
     const highlightingContent = document.getElementById('highlighting-content');
     const highlighting = document.getElementById('highlighting');
     const lineNumbers = document.getElementById('line-numbers');
-    const syncWarning = document.getElementById('sync-warning');
     const shareBtn = document.getElementById('btn-share');
     const outputDiv = document.getElementById("output");
     
@@ -373,12 +389,120 @@
     const outputWrapper = document.getElementById('output-wrapper');
     const resizer = document.getElementById('resizer');
     const layoutIcon = document.getElementById('layout-icon');
+    
+    // Banner UI
+    const syncBanner = document.getElementById('sync-banner');
+    const syncBannerText = document.getElementById('sync-banner-text');
+    const btnToggleSync = document.getElementById('btn-toggle-sync');
 
     const storageKey = "python_editor_" + QUESTION_ID;
     const dirtyKey = "python_dirty_" + QUESTION_ID;
     const layoutKey = "python_layout_" + QUESTION_ID;
+    const autoSyncPrefKey = "python_editor_autosync_pref"; // Persistent across all questions
     
     let isDirty = false;
+    
+    // State management for Sync Protocol
+    let hostConnected = false;
+    let autoSyncEnabled = false;
+    
+    // Performance Optimization variables
+    let currentLineCount = 0;
+
+    // --- UNDO/REDO PRESERVING UTILS ---
+    function insertTextAtCursor(textarea, text) {
+        textarea.focus();
+        // Fallback to value modification ONLY if execCommand fails (preserves undo history)
+        if (!document.execCommand('insertText', false, text)) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + text.length;
+            update(textarea.value);
+        }
+    }
+
+    function deleteSelectedText(textarea) {
+        textarea.focus();
+        // ExecCommand delete is required to preserve history
+        if (!document.execCommand('delete', false, null)) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start;
+            update(textarea.value);
+        }
+    }
+
+    // --- UTILS ---
+    function generateHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return hash;
+    }
+
+    // --- SYNC & BANNER LOGIC ---
+
+    function updateBannerUI() {
+        if (hostConnected && autoSyncEnabled) {
+            // Auto Sync is Active
+            syncBanner.className = 'banner-active visible';
+            syncBannerText.innerText = 'Auto-copy to answer box active';
+            btnToggleSync.innerText = 'Turn off';
+            btnToggleSync.style.display = 'inline-block';
+            btnToggleSync.onclick = () => { 
+                autoSyncEnabled = false; 
+                localStorage.setItem(autoSyncPrefKey, 'false');
+                updateBannerUI(); 
+            };
+        } else if (isDirty) {
+            // Unsaved Changes Warning
+            syncBanner.className = 'banner-warning visible';
+            syncBannerText.innerText = 'WARNING: CODE HAS BEEN UPDATED - REMEMBER TO COPY YOUR CODE INTO THE ANSWER BOX.';
+            
+            if (hostConnected) {
+                // If connected but disabled, allow them to re-enable
+                btnToggleSync.innerText = 'Turn on auto-copy';
+                btnToggleSync.style.display = 'inline-block';
+                btnToggleSync.onclick = () => { 
+                    autoSyncEnabled = true; 
+                    localStorage.setItem(autoSyncPrefKey, 'true');
+                    triggerAutoSync(); // Push current state immediately
+                    updateBannerUI(); 
+                };
+            } else {
+                // Not connected to host, hide the toggle button
+                btnToggleSync.style.display = 'none';
+            }
+        } else {
+            // Clean state, Auto-Sync disabled -> Hidden
+            syncBanner.className = '';
+        }
+    }
+
+    function pingHost() {
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'moodle-ping' }, '*');
+            
+            // Timeout if host doesn't reply within 2 seconds
+            setTimeout(() => {
+                if (!hostConnected) {
+                    console.log("Auto-sync ping failed. Host listener not detected.");
+                    autoSyncEnabled = false;
+                    updateBannerUI();
+                }
+            }, 2000);
+        }
+    }
+
+    function triggerAutoSync() {
+        if (hostConnected && autoSyncEnabled) {
+            syncWithMoodle(editing.value, 'moodle-sync-code');
+        }
+    }
 
     // --- EDITOR LOGIC (HIGHLIGHTING & SYNC) ---
 
@@ -386,26 +510,44 @@
     function update(text, shouldMarkDirty = true) {
         let result_text = text;
         if(text[text.length-1] == "\n") result_text += " "; 
+        
+        // Execute Syntax Highlighting
         highlightingContent.innerHTML = highlightPython(result_text);
+        
+        // Update Line numbers (Optimized to only redraw on line count changes)
         updateLineNumbers(text);
+        
         // Force a scroll sync to ensure the overlay aligns with the cursor
         sync_scroll(editing);
+        
         if (shouldMarkDirty) {
             setDirty(true);
+            
+            // Immediately auto-sync to the host on every keystroke
+            if (hostConnected && autoSyncEnabled) {
+                triggerAutoSync();
+            }
         }
+        
+        // Synchronously write to localStorage on every keystroke
         localStorage.setItem(storageKey, text);
     }
 
     function setDirty(dirty) {
+        if (isDirty === dirty) return; // Prevent redundant DOM layout thrashing
         isDirty = dirty;
         localStorage.setItem(dirtyKey, dirty ? "true" : "false");
-        if (dirty) syncWarning.classList.add('visible');
-        else syncWarning.classList.remove('visible');
+        updateBannerUI();
     }
 
     function updateLineNumbers(text) {
         const lines = text.split('\n').length;
-        lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+        
+        // Performance Optimization: Only rebuild DOM if line count actually changes
+        if (lines !== currentLineCount) {
+            lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+            currentLineCount = lines;
+        }
     }
 
     function sync_scroll(element) {
@@ -481,9 +623,7 @@
 
         if(e.key == "Tab") {
             e.preventDefault();
-            textarea.value = val.substring(0, start) + "    " + val.substring(end);
-            textarea.selectionStart = textarea.selectionEnd = start + 4;
-            update(textarea.value);
+            insertTextAtCursor(textarea, "    ");
         } 
         else if (e.key == "Backspace") {
             if (start === end && start > 0) {
@@ -494,14 +634,21 @@
                     const fourCharsBefore = val.substring(start - 4, start);
                     if (fourCharsBefore === "    ") {
                         e.preventDefault();
-                        textarea.value = val.substring(0, start - 4) + val.substring(end);
-                        textarea.selectionStart = textarea.selectionEnd = start - 4;
-                        update(textarea.value);
+                        textarea.selectionStart = start - 4;
+                        textarea.selectionEnd = start;
+                        deleteSelectedText(textarea);
                     }
                 }
             }
         }
         else if (e.key == "Enter") {
+            // Check for Ctrl+Enter or Cmd+Enter to run the code
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                runCode();
+                return;
+            }
+
             e.preventDefault();
             const lineStart = val.lastIndexOf('\n', start - 1) + 1;
             const currentLine = val.substring(lineStart, start);
@@ -523,7 +670,23 @@
             }
             // STRATEGY 2: Line ends with Colon (Start of block), ignoring comments
             else if (lineWithoutComment.endsWith(":")) {
-                nextIndent = getLineIndent(val, start) + "    ";
+                const beforeColon = lineWithoutComment.slice(0, -1).trimEnd();
+                const lastCharBeforeColon = beforeColon.charAt(beforeColon.length - 1);
+                
+                // If the block is starting right after a closed parenthesis/bracket (e.g., `):`)
+                // Base the next indent on the line that OPENED that bracket (e.g. the `def` line)
+                if ([')', ']', '}'].includes(lastCharBeforeColon)) {
+                    const closeIndex = lineStart + currentLine.lastIndexOf(lastCharBeforeColon);
+                    const openIndex = findMatchingBracket(val, closeIndex);
+                    
+                    if (openIndex !== null) {
+                        nextIndent = getLineIndent(val, openIndex) + "    ";
+                    } else {
+                        nextIndent = getLineIndent(val, start) + "    ";
+                    }
+                } else {
+                    nextIndent = getLineIndent(val, start) + "    ";
+                }
             }
             // STRATEGY 3: Line ends with closing bracket
             else if ([')', ']', '}'].includes(trimmed.charAt(trimmed.length - 1))) {
@@ -543,10 +706,7 @@
             }
 
             const insertion = "\n" + nextIndent;
-            textarea.value = val.substring(0, start) + insertion + val.substring(end);
-            
-            textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
-            update(textarea.value);
+            insertTextAtCursor(textarea, insertion);
             
             setTimeout(() => {
                 sync_scroll(textarea);
@@ -555,44 +715,27 @@
     }
 
     function handlePaste(e) {
-        setTimeout(() => {
         const clipboardData = e.clipboardData || window.clipboardData;
-        console.log("--- START PASTE ANALYSIS ---");
-    
+        if (!clipboardData) return;
+
+        // Prevent the browser from doing its own paste immediately to avoid duplication
+        e.preventDefault();
+
         let html = clipboardData.getData('text/html');
-        let text = "";
-    
+        let text = clipboardData.getData('text');
+
         if (html && html.trim().length > 0) {
-            console.log("Stage 0 (Raw HTML from SEB):", html);
-            e.preventDefault();
-    
-            // Stage 1: Remove <style> and <script> blocks
             let processed = html.replace(/<style([\s\S]*?)<\/style>/gi, '');
             processed = processed.replace(/<script([\s\S]*?)<\/script>/gi, '');
-            console.log("Stage 1 (Post-Style/Script Strip):", processed);
-    
-            // Stage 2: Strip all attributes (Fixes the bulky <pre style="...">)
-            // This turns <pre id="..." style="..."> into <pre>
             processed = processed.replace(/(<[a-z0-9]+)\s+[^>]+(?=>)/gi, '$1');
-            console.log("Stage 2 (Post-Attribute Strip):", processed);
-    
-            // Stage 3: Convert <br> to newlines
             processed = processed.replace(/<br\s*\/?>/gi, "\n");
-            console.log("Stage 3 (Post-BR Conversion):", processed);
-    
-            // Stage 4: Convert structural closing tags to newlines
             processed = processed.replace(/<\/div>/ig, '\n');
             processed = processed.replace(/<\/p>/ig, '\n');
             processed = processed.replace(/<\/li>/ig, '\n');
             processed = processed.replace(/<li>/ig, '  * ');
             processed = processed.replace(/<\/ul>/ig, '\n');
-            console.log("Stage 4 (Post-Structural Conversion):", processed);
-    
-            // Stage 5: Strip all remaining tags (like <pre> and <div>)
             processed = processed.replace(/<[^>]+>/ig, '');
-            console.log("Stage 5 (Post-Tag Strip):", processed);
-    
-            // Stage 6: Decode HTML Entities (Essential for symbols like <, >, &)
+            
             text = processed
                 .replace(/&nbsp;/g, ' ')
                 .replace(/&lt;/g, '<')
@@ -600,38 +743,32 @@
                 .replace(/&amp;/g, '&')
                 .replace(/&quot;/g, '"')
                 .replace(/&#39;/g, "'");
-            console.log("Stage 6 (Post-Entity Decoding):", text);
-        } else {
-            console.log("Stage 0: No HTML found in SEB buffer. Falling back to plain text.");
-            text = clipboardData.getData('text');
-            if (text) {
-                e.preventDefault();
-                console.log("Raw Plain Text:", text);
-            }
-        }
-    
-        if (text) {
-            // Stage 7: SEB/Windows-Specific Normalization
-            // 1. Normalize line endings (\r\n -> \n)
-            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-            // 2. Strip non-printable control characters often added by SEB/Chromium hooks
-            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-            text = text.trimEnd()
 
-            console.log("Stage 7 (Final Clean Text):", JSON.stringify(text));
-    
-            // Stage 8: Insertion and UI Update
-            const start = editing.selectionStart;
-            const end = editing.selectionEnd;
-            editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
-            editing.selectionStart = editing.selectionEnd = start + text.length;
-    
-            // Force the highlight and visibility update immediately
-            update(editing.value);
-            console.log("--- PASTE PROCESS COMPLETE ---");
+            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+
+            // HTML Artifact Fix (The extra space bug)
+            // HTML parsers turn formatting tags into artificial spaces. 
+            // We check the raw plain-text payload. If the pure clipboard lacks leading/trailing spaces, strip them.
+            const rawPlainText = clipboardData.getData('text') || "";
+            if (rawPlainText) {
+                if (!/^\s/.test(rawPlainText)) text = text.trimStart();
+                if (!/\s$/.test(rawPlainText)) text = text.trimEnd();
+            } else {
+                text = text.trimEnd();
+            }
+        } else if (text) {
+            // PLAIN TEXT OVERRIDE
+            // Only normalize line endings and control chars. 
+            // Do NOT trim anything so intentional spacing/indentation is preserved.
+            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
         }
-        sync_scroll(editing);
-        }, 0);
+
+        if (text) {
+            insertTextAtCursor(editing, text);
+            sync_scroll(editing);
+        }
     }
         
     // --- SYNTAX HIGHLIGHTING ---
@@ -743,7 +880,6 @@
 
     document.getElementById('editor-wrapper').addEventListener('mouseenter', () => {
         if (document.activeElement !== editing) {
-            console.log("Syncing clipboard via focus poke...");
             editing.focus({ preventScroll: true });
         }
     });
@@ -830,9 +966,10 @@
         setTimeout(() => shareBtn.innerText = "Share Link", 1000);
     }
 
-    function syncWithMoodle(code) {
+    function syncWithMoodle(code, type = 'moodle-submit-code') {
         if (window.parent && window.parent !== window) {
-            window.parent.postMessage({ type: 'moodle-submit-code', content: code }, '*');
+            const currentHash = generateHash(code);
+            window.parent.postMessage({ type: type, content: code, hash: currentHash }, '*');
         }
     }
     
@@ -840,7 +977,7 @@
         const code = editing.value;
 
         // Sync with Moodle
-        syncWithMoodle(code);
+        syncWithMoodle(code, 'moodle-submit-code');
 
         const tempInput = document.createElement("textarea");
         tempInput.value = code;
@@ -851,35 +988,61 @@
             const btn = document.querySelector('.btn-submit');
             const oldText = btn.innerText;
             btn.innerText = "✓ Copied";
-            setTimeout(() => btn.innerText = oldText, 1000);
+            setTimeout(() => { if (btn.innerText === "✓ Copied") btn.innerText = oldText; }, 1000);
         } catch (e) {
             console.error("Clipboard copy failed");
         }
         document.body.removeChild(tempInput);
-        setDirty(false);
+        
+        if (!hostConnected) {
+            setDirty(false); // Only clear locally if no host to ack
+        }
     }
 
     // --- PASTE EVENT LISTENER (FROM PARENT WINDOW) ---
     window.addEventListener('message', function(e) {
-        // 1. Verify this is our specific message type
+        
+        // 1. Handle Ping Acknowledgment
+        if (e.data && e.data.type === 'moodle-pong') {
+            hostConnected = true;
+            const savedPref = localStorage.getItem(autoSyncPrefKey);
+            autoSyncEnabled = (savedPref !== 'false'); // True by default unless explicitly saved as 'false'
+            updateBannerUI();
+        }
+
+        // 2. Handle Sync Acknowledgment
+        if (e.data && e.data.type === 'moodle-sync-ack') {
+            // Calculate hash of what's currently in the editor
+            const currentHash = generateHash(editing.value);
+            
+            // Check if the echoed hash matches our current state
+            if (e.data.hash === currentHash) {
+                setDirty(false); // Clears the dirty state which updates the banner
+                
+                // Only flash the button if it was a manual submit
+                if (!autoSyncEnabled) {
+                    const btn = document.querySelector('.btn-submit');
+                    const oldText = btn.innerText;
+                    btn.innerText = "✓ Synced to Host";
+                    btn.style.backgroundColor = "#218838"; 
+                    setTimeout(() => { 
+                        if (btn.innerText === "✓ Synced to Host") {
+                            btn.innerText = oldText;
+                            btn.style.backgroundColor = ""; 
+                        }
+                    }, 2000);
+                }
+            }
+        }
+
+        // 3. Verify this is our specific message type for starter code
         if (e.data && e.data.type === 'insert_starter_code') {
-            // 2. Extract the text from the payload
+            // Extract the text from the payload
             const text = e.data.text;
             
             // (Ensure it's a string just in case)
             if (typeof text === 'string') {
-                const start = editing.selectionStart;
-                const end = editing.selectionEnd;
-                
-                // Insert text at the current cursor position
-                editing.value = editing.value.substring(0, start) + text + editing.value.substring(end);
-                
-                // Move cursor to the end of the pasted text
-                editing.selectionStart = editing.selectionEnd = start + text.length;
-                
-                // Refocus, update syntax highlighting, and sync scroll
-                editing.focus();
-                update(editing.value);
+                insertTextAtCursor(editing, text);
                 sync_scroll(editing);
             }
         }
@@ -888,6 +1051,8 @@
     
     // --- INIT ---
     window.addEventListener('load', function() {
+        pingHost(); // Initiate connection test
+
         const codeParam = urlParams.get('code');
         if (codeParam) {
             try {

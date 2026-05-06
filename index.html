@@ -1051,29 +1051,27 @@
     
     // --- INIT ---
     window.addEventListener('load', function() {
-        pingHost(); // Initiate connection test
-
         const codeParam = urlParams.get('code');
         if (codeParam) {
-            try {
-                const decodedCode = decodeURIComponent(atob(codeParam));
-                editing.value = decodedCode;
-                update(decodedCode, false);
-                setDirty(false);
-            } catch (e) { console.error(e); }
-        } else {
-            const savedCode = localStorage.getItem(storageKey);
-            const savedDirty = localStorage.getItem(dirtyKey);
+                    try {
+                        const decodedCode = decodeURIComponent(atob(codeParam));
+                        editing.value = decodedCode;
+                        update(decodedCode, false);
+                        setDirty(false);
+                    } catch (e) { console.error(e); }
+                } else {
+                    const savedCode = localStorage.getItem(storageKey);
+                    const savedDirty = localStorage.getItem(dirtyKey);
 
-            if (savedCode && savedCode.trim() !== "") {
-                editing.value = savedCode;
-                // Don't mark dirty on initial load from storage
-                update(savedCode, false);
-            } else {
-                update(editing.value, false);
-            }
+                    if (savedCode && savedCode.trim() !== "") {
+                        editing.value = savedCode;
+                        // Don't mark dirty on initial load from storage
+                        update(savedCode, false);
+                    } else {
+                        update(editing.value, false);
+                    }
 
-            // Restore dirty state explicitly
+                    // Restore dirty state explicitly
             if (savedDirty === "true") {
                 setDirty(true);
             } else {
@@ -1086,6 +1084,11 @@
         if (savedLayout !== null) {
             toggleLayout(parseInt(savedLayout));
         }
+
+        // Asynchronously ping host after local storage is loaded and UI is painted
+        setTimeout(() => {
+            pingHost();
+        }, 50);
     });
 </script>
 

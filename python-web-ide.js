@@ -1018,20 +1018,6 @@
             // Check if the echoed hash matches our current state
             if (e.data.hash === currentHash) {
                 setDirty(false); // Clears the dirty state which updates the banner
-                
-                // Only flash the button if it was a manual submit
-                if (!autoSyncEnabled) {
-                    const btn = document.querySelector('.btn-submit');
-                    const oldText = btn.innerText;
-                    btn.innerText = "✓ Synced to Host";
-                    btn.style.backgroundColor = "#218838"; 
-                    setTimeout(() => { 
-                        if (btn.innerText === "✓ Synced to Host") {
-                            btn.innerText = oldText;
-                            btn.style.backgroundColor = ""; 
-                        }
-                    }, 2000);
-                }
             }
         }
 

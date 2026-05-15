@@ -986,11 +986,11 @@
         try {
             document.execCommand("copy");
             const btn = document.querySelector('.btn-submit');
-            const oldText = btn.innerText;
             btn.innerText = "✓ Copied";
-            setTimeout(() => { if (btn.innerText === "✓ Copied") btn.innerText = oldText; }, 1000);
-        } catch (e) {
-            console.error("Clipboard copy failed");
+            setTimeout(() => { 
+                if (btn.innerText === "✓ Copied") btn.innerText = "Copy to Answer Box"; 
+            }, 1000);
+        } catch (e) {ipboard copy failed");
         }
         document.body.removeChild(tempInput);
         

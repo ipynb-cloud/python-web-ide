@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Python Code Editor</title>
     
-    <!-- Added 'defer' so these large scripts download in the background without blocking the UI paint -->
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
 
@@ -326,8 +325,7 @@
 <div class="main-toolbar">
     <div class="toolbar-left">
         <div class="main-title">PYTHON EDITOR</div>
-        <!-- <button id="btn-share" class="btn-share btn-sm" onclick="shareCode()">Share Link</button> -->
-    </div>
+        </div>
     <div class="toolbar-actions">
         <button class="btn-layout" onclick="toggleLayout()" title="Change Layout">
             <span id="layout-icon">◫</span> Layout
@@ -413,6 +411,21 @@
     
     // Performance Optimization variables
     let currentLineCount = 0;
+
+    // --- NEW SAFE MODE CONFIGURATION & BUFFER VARIABLES ---
+    let outputBuffer = [];
+    let bufferedLineCount = 0;
+    let isExecutionTerminated = false;
+
+    // Dynamically inject Safe Mode checkbox into the output panel controls
+    const panelControls = document.querySelector('.panel-controls');
+    if (panelControls) {
+        const safeModeLabel = document.createElement('label');
+        safeModeLabel.style.cssText = 'display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #cccccc; cursor: pointer; margin-right: 10px; user-select: none;';
+        safeModeLabel.innerHTML = '<input type="checkbox" id="chk-safe-mode" checked style="cursor:pointer;"> Safe Mode';
+        panelControls.insertBefore(safeModeLabel, panelControls.firstChild);
+    }
+    const chkSafeMode = document.getElementById('chk-safe-mode');
 
     // --- UNDO/REDO PRESERVING UTILS ---
     function insertTextAtCursor(textarea, text) {
@@ -897,21 +910,48 @@
         }
     });
 
-    // --- SKULPT EXECUTION ---
+    // --- SKULPT EXECUTION (WITH SAFE BUFFERING & TIMEOUTS) ---
     function outf(text) { 
-        var span = document.createElement('span');
-        span.innerText = text;
-        outputDiv.appendChild(span);
-        outputDiv.scrollTop = outputDiv.scrollHeight;
+        if (isExecutionTerminated) return;
+
+        outputBuffer.push(text);
+        const addedLines = (text.match(/\n/g) || []).length;
+        bufferedLineCount += addedLines;
+
+        if (chkSafeMode && chkSafeMode.checked && bufferedLineCount > 100) {
+            isExecutionTerminated = true;
+            flushBufferToScreen();
+            
+            var s = document.createElement('span');
+            s.className = 'output-error';
+            s.innerText = "\n\n[Safe Mode Error]: Code terminated. Generated output exceeded 100 lines.";
+            outputDiv.appendChild(s);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+            
+            throw new Error("Line limit exceeded");
+        }
     } 
+
     function builtinRead(x) {
         if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) throw "Err";
         return Sk.builtinFiles["files"][x];
     }
     
+    function flushBufferToScreen() {
+        if (outputBuffer.length > 0) {
+            var span = document.createElement('span');
+            span.innerText = outputBuffer.join("");
+            outputDiv.appendChild(span);
+            outputBuffer = [];
+        }
+    }
+    
     function runCode() { 
         // 1. Clear the output immediately
         outputDiv.innerHTML = "";
+        outputBuffer = [];
+        bufferedLineCount = 0;
+        isExecutionTerminated = false;
         
         // Safety Check: Ensure Skulpt is loaded
         if (typeof Sk === 'undefined') {
@@ -929,18 +969,38 @@
 
         // 3. Run code after a very short delay to create the visual sequence
         setTimeout(() => {
-            Sk.configure({ output: outf, read: builtinRead, __future__: Sk.python3 }); 
+            const isSafeMode = chkSafeMode && chkSafeMode.checked;
+
+            Sk.configure({ 
+                output: outf, 
+                read: builtinRead, 
+                __future__: Sk.python3,
+                execLimit: isSafeMode ? 1000 : Number.POSITIVE_INFINITY 
+            }); 
+            
             Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, editing.value, true))
             .then(() => {
+                if (isExecutionTerminated) return;
+                flushBufferToScreen();
+
                 var s = document.createElement('span');
                 s.className = 'output-success';
                 s.innerText = "\n>>> Finished successfully.";
                 outputDiv.appendChild(s);
                 outputDiv.scrollTop = outputDiv.scrollHeight;
             }, (err) => {
+                if (isExecutionTerminated) return;
+                flushBufferToScreen();
+
                 var s = document.createElement('span');
                 s.className = 'output-error';
-                s.innerText = "\n" + err.toString();
+                
+                if (err.toString().includes("TimeLimitError")) {
+                    s.innerText = "\n\n[Safe Mode Error]: Time limit exceeded. Execution timed out after 1.0 second.";
+                } else {
+                    s.innerText = "\n" + err.toString();
+                }
+                
                 outputDiv.appendChild(s);
                 outputDiv.scrollTop = outputDiv.scrollHeight;
             });

@@ -417,8 +417,8 @@
     const panelControls = document.querySelector('.panel-controls');
     if (panelControls) {
         const safeModeLabel = document.createElement('label');
-        safeModeLabel.style.cssText = 'display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #cccccc; cursor: pointer; margin-right: 10px; user-select: none;';
-        safeModeLabel.innerHTML = '<input type="checkbox" id="chk-safe-mode" checked style="cursor:pointer; display:none;"> Safe Mode';
+        safeModeLabel.style.cssText = 'display: none; align-items: center; gap: 5px; font-size: 11px; color: #cccccc; cursor: pointer; margin-right: 10px; user-select: none;';
+        safeModeLabel.innerHTML = '<input type="checkbox" id="chk-safe-mode" checked style="cursor:pointer;"> Safe Mode';
         panelControls.insertBefore(safeModeLabel, panelControls.firstChild);
     }
     const chkSafeMode = document.getElementById('chk-safe-mode');

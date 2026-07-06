@@ -418,7 +418,7 @@
     if (panelControls) {
         const safeModeLabel = document.createElement('label');
         safeModeLabel.style.cssText = 'display: none; align-items: center; gap: 5px; font-size: 11px; color: #cccccc; cursor: pointer; margin-right: 10px; user-select: none;';
-        safeModeLabel.innerHTML = '<input type="checkbox" id="chk-safe-mode" checked style="cursor:pointer;"> Safe Mode';
+        safeModeLabel.innerHTML = '<input type="checkbox" id="chk-safe-mode" checked style="cursor:pointer;"> <span style="display: none;">Safe Mode<span>';
         panelControls.insertBefore(safeModeLabel, panelControls.firstChild);
     }
     const chkSafeMode = document.getElementById('chk-safe-mode');

@@ -1,13 +1,5 @@
-/**
- * Moodle Vanilla Python Notebook Widget
- * 
- * Usage in Moodle HTML Editor:
- * <div id="moodle-notebook-mount"></div>
- * <script type="module">
- *   import { PythonNotebook } from 'https://your-domain.com/moodle_notebook.js';
- *   new PythonNotebook('moodle-notebook-mount');
- * </script>
- */
+import { loadPyodide } from 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs';
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked/+esm';
 
 export class PythonNotebook {
     constructor(mountId) {
@@ -53,6 +45,20 @@ export class PythonNotebook {
         });
     }
 
+    async loadScriptBypassingAMD(src) {
+        // This stops Moodle's require.js from kidnapping UMD libraries like CodeMirror
+        if (document.querySelector(`script[data-amd-bypass="${src}"]`)) return;
+        const response = await fetch(src);
+        const code = await response.text();
+        const script = document.createElement('script');
+        script.setAttribute('data-amd-bypass', src);
+        
+        // Execute the script but pass "undefined" as Moodle's "define" method.
+        // This forces the script to attach itself globally to the window object!
+        script.textContent = `(function(define){ \n${code}\n }).call(window, undefined);`;
+        document.head.appendChild(script);
+    }
+
     loadStylesheet(href) {
         return new Promise((resolve, reject) => {
             if (document.querySelector(`link[href="${href}"]`)) return resolve();
@@ -76,7 +82,7 @@ export class PythonNotebook {
             };
         }
 
-        // 2. Configure MathJax BEFORE loading it
+        // 2. Configure MathJax 3 (Only if Moodle hasn't already loaded MathJax 2)
         if (!window.MathJax) {
             window.MathJax = {
                 tex: {
@@ -87,22 +93,25 @@ export class PythonNotebook {
             };
         }
 
-        // 3. Load all CSS
+        // 3. Load CSS
         await Promise.all([
             this.loadStylesheet('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css'),
             this.loadStylesheet('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/monokai.min.css')
         ]);
 
-        // 4. Load core JS sequentially where order matters, and parallel where it doesn't
-        await this.loadScript('https://cdn.tailwindcss.com');
-        await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js');
-        await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js');
+        // 4. Load standard scripts (Tailwind & MathJax)
+        const standardScripts = [this.loadScript('https://cdn.tailwindcss.com')];
+        if (!window.MathJax) { 
+            // Only inject MathJax 3 if Moodle's native MathJax is completely missing
+            standardScripts.push(this.loadScript('https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'));
+        }
+        await Promise.all(standardScripts);
+
+        // 5. CodeMirror (Must explicitly bypass Moodle's RequireJS via the fetch trick)
+        await this.loadScriptBypassingAMD('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js');
+        await this.loadScriptBypassingAMD('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js');
         
-        await Promise.all([
-            this.loadScript('https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js'),
-            this.loadScript('https://cdn.jsdelivr.net/npm/marked/marked.min.js'),
-            this.loadScript('https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js')
-        ]);
+        // Note: Pyodide and Marked were already loaded at the top via ESM imports!
     }
 
     injectStyles() {
@@ -162,7 +171,6 @@ export class PythonNotebook {
     }
 
     renderBaseUI() {
-        // Build the isolated container with the exact structure expected by our CSS and Tailwind config
         this.mountPoint.innerHTML = `
             <div id="python-notebook-app" class="text-gray-800 antialiased p-4 md:p-8 border border-gray-200 rounded bg-white shadow-sm">
                 <div class="max-w-4xl mx-auto">
@@ -194,7 +202,6 @@ export class PythonNotebook {
             </div>
         `;
 
-        // Bind main UI buttons
         this.mountPoint.querySelector('#btn-add-code').addEventListener('click', () => this.addCodeCell());
         this.mountPoint.querySelector('#btn-add-text').addEventListener('click', () => this.addMarkdownCell());
         
@@ -203,6 +210,7 @@ export class PythonNotebook {
 
     async initEngine() {
         try {
+            // Because we used ESM imports, loadPyodide bypasses Moodle completely.
             this.pyodideInstance = await loadPyodide({
                 stdout: (text) => {
                     if (this.currentOutputTarget) {
@@ -218,8 +226,6 @@ export class PythonNotebook {
 
             this.updateStatus('Python Ready', 'emerald');
             
-            // Note: Template loading removed as requested. Starts with an empty space.
-
         } catch (err) {
             this.updateStatus('Failed to load Python Engine', 'red');
             console.error("Pyodide init error:", err);
@@ -359,6 +365,7 @@ export class PythonNotebook {
             notebookContainer.appendChild(wrapper);
         }
 
+        // Global CodeMirror is guaranteed to be available here thanks to the Fetch-Mask
         const editor = CodeMirror(editorDiv, {
             value: initialCode,
             mode: "python",
@@ -470,8 +477,13 @@ export class PythonNotebook {
     }
 
     renderMathJax(element) {
-        if (window.MathJax && window.MathJax.typesetPromise) {
+        if (!window.MathJax) return;
+        
+        // This safely bridges Moodle's native MathJax 2 AND modern MathJax 3
+        if (window.MathJax.typesetPromise) { 
             window.MathJax.typesetPromise([element]).catch((err) => console.error('MathJax error:', err));
+        } else if (window.MathJax.Hub) {
+            window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub, element]);
         }
     }
 

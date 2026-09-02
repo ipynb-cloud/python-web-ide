@@ -6,7 +6,6 @@ export class PythonNotebook {
             return;
         }
 
-        // Auto-detect Moodle's grading textarea for this specific question
         // It looks for the closest question container, then finds the essay response box
         const questionContainer = this.mountPoint.closest('.que');
         this.moodleTextArea = questionContainer ? questionContainer.querySelector('textarea.qtype_essay_response') : null;
@@ -32,7 +31,6 @@ export class PythonNotebook {
 
         this.mountPoint.appendChild(iframe);
 
-        // --- 1. SETUP THE PARENT LISTENER (Moodle Side) ---
         window.addEventListener('message', (event) => {
             // Security check: ensure message is from our specific iframe
             if (event.source !== iframe.contentWindow) return;
@@ -67,7 +65,7 @@ export class PythonNotebook {
                 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/monokai.min.css">
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js"></script>
-                <script src="https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js"></script>
+                <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
                 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
                 <script>
                     window.MathJax = {
@@ -121,15 +119,12 @@ export class PythonNotebook {
                     let menuTarget = null;
                     let syncTimeout = null;
 
-                    // --- 2. SETUP THE IFRAME LISTENER (Receiving from Moodle) ---
                     window.addEventListener('message', (event) => {
                         if (event.data.type === 'load') {
                             loadNotebookState(event.data.content);
                         }
                     });
 
-                    // --- 3. AUTO-RESIZER ---
-                    // Watch the body height and tell the Moodle page to expand the iframe
                     const resizeObserver = new ResizeObserver(entries => {
                         window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
                     });
@@ -145,6 +140,7 @@ export class PythonNotebook {
                                 stderr: (text) => appendOutput(text, true)
                             });
                             
+                            // Initialize micropip for dynamic package loading
                             document.getElementById('status').innerText = "Loading package manager...";
                             await pyodide.loadPackage("micropip");
 
@@ -323,7 +319,6 @@ export class PythonNotebook {
                             extraKeys: { "Shift-Enter": () => runCell(id) }
                         });
                         
-                        // Sync state to Moodle whenever code is changed
                         cm.on("change", () => debounceSync());
                         cm.on("contextmenu", (cm, e) => showMenu(e, id, 'code', cm, div));
                         div.cmInstance = cm;
@@ -331,6 +326,7 @@ export class PythonNotebook {
                     }
 
                     let currentOut = null;
+                    
                     function appendOutput(text, isErr = false) {
                         if (currentOut) {
                             currentOut.textContent += text + "\\n";
@@ -339,10 +335,24 @@ export class PythonNotebook {
                         }
                     }
 
+                    window.appendPlot = function(svgData) {
+                        if (currentOut) {
+                            const d = document.createElement('div');
+                            d.innerHTML = svgData; 
+                            d.style.margin = '10px 0';
+                            d.style.backgroundColor = 'white';
+                            d.style.padding = '10px';
+                            d.style.borderRadius = '4px';
+                            d.style.display = 'inline-block';
+                            currentOut.appendChild(d);
+                            currentOut.classList.remove('hidden');
+                        }
+                    };
+
                     async function runCell(id) {
                         if (!pyodide) return alert("Wait for Python to load");
-                        const div = document.getElementById(`cell-${id}`);
-                        const out = document.getElementById(`out-${id}`);
+                        const div = document.getElementById(\`cell-\${id}\`);
+                        const out = document.getElementById(\`out-\${id}\`);
                         out.innerHTML = '';
                         out.className = "mt-2 p-2 bg-gray-50 rounded font-mono text-sm whitespace-pre-wrap border border-gray-200";
                         currentOut = out;
@@ -352,7 +362,7 @@ export class PythonNotebook {
                             const lines = rawCode.split('\\n');
                             const cleanCodeLines = [];
                             
-                            // 1. Check for Jupyter-style !pip install commands
+                            // 1. Process Jupyter !pip install magic
                             for (let line of lines) {
                                 if (line.trim().startsWith('!pip install')) {
                                     const pkg = line.replace('!pip install', '').trim();
@@ -364,16 +374,46 @@ export class PythonNotebook {
                                     cleanCodeLines.push(line);
                                 }
                             }
-                            
                             const code = cleanCodeLines.join('\\n');
                             
-                            // 2. Automatically load standard libraries (numpy, pandas, etc.) if imported
+                            // 2. Fetch standard packages (numpy, pandas, etc.)
                             await pyodide.loadPackagesFromImports(code);
 
-                            // 3. Execute the clean code
+                            // 3. Matplotlib Hook: If they import it, we force SVG routing
+                            if (code.includes('matplotlib') || code.includes('pyplot')) {
+                                await pyodide.runPythonAsync(\`
+import matplotlib
+matplotlib.use('svg')
+import matplotlib.pyplot as plt
+import io, js
+def _custom_show():
+    buf = io.BytesIO()
+    plt.savefig(buf, format='svg')
+    buf.seek(0)
+    js.appendPlot(buf.read().decode('utf-8'))
+    plt.close('all')
+plt.show = _custom_show
+                                \`);
+                            }
+
+                            // 4. Run the code
                             if (code.trim() !== '') {
                                 let res = await pyodide.runPythonAsync(code);
-                                if (res !== undefined) appendOutput(res);
+                                
+                                // 5. Auto-echo the last expression (Jupyter style)
+                                if (res !== undefined) {
+                                    pyodide.globals.set('_last_res', res);
+                                    const repr = pyodide.runPython('repr(_last_res)');
+                                    if (repr !== 'None') {
+                                        const outSpan = document.createElement('span');
+                                        outSpan.style.color = '#b91c1c'; // Tailwind red-700
+                                        outSpan.style.fontWeight = 'bold';
+                                        outSpan.innerText = "Out: " + repr + "\\n";
+                                        currentOut.appendChild(outSpan);
+                                        currentOut.classList.remove('hidden');
+                                    }
+                                    if (typeof res.destroy === 'function') res.destroy();
+                                }
                             }
                         } catch (e) {
                             let errStr = e.toString();
@@ -382,8 +422,6 @@ export class PythonNotebook {
                             appendOutput(errStr, true);
                         }
                         currentOut = null;
-                        
-                        // Manually trigger resize observer in case output expanded box
                         window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
                     }
 
@@ -400,7 +438,6 @@ export class PythonNotebook {
                         ta.value = text;
                         ta.placeholder = "Double click to edit markdown...";
                         
-                        // Sync state to Moodle whenever text is changed
                         ta.addEventListener('input', () => debounceSync());
                         ta.onkeydown = (e) => { if(e.key === 'Enter' && e.shiftKey) { e.preventDefault(); toggleMd(id, false); } };
                         ta.oncontextmenu = (e) => showMenu(e, id, 'md', ta, div);

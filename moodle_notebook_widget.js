@@ -329,7 +329,7 @@ export class PythonNotebook {
                     
                     function appendOutput(text, isErr = false) {
                         if (currentOut) {
-                            currentOut.textContent += text + "\\n";
+                            currentOut.textContent += text + "\n";
                             currentOut.classList.remove('hidden');
                             if(isErr) currentOut.classList.add('text-red-600', 'bg-red-50', 'border-red-200');
                         }
@@ -337,30 +337,30 @@ export class PythonNotebook {
 
                     window.appendPlot = function(svgData) {
                         if (currentOut) {
-                            const d = document.createElement('div');
-                            d.innerHTML = svgData; 
-                            d.style.margin = '10px 0';
-                            d.style.backgroundColor = 'white';
-                            d.style.padding = '10px';
-                            d.style.borderRadius = '4px';
-                            d.style.display = 'inline-block';
-                            currentOut.appendChild(d);
+                            const img = document.createElement('img');
+                            // Safely encode the SVG as an image source to prevent HTML parsing errors
+                            const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+                            const url = URL.createObjectURL(blob);
+                            
+                            img.src = url; 
+                            img.style.margin = '10px 0';
+                            img.style.backgroundColor = 'white';
+                            img.style.padding = '10px';
+                            img.style.borderRadius = '4px';
+                            img.style.display = 'block';
+                            img.style.maxWidth = '100%';
+                            
+                            // Clean up browser memory once the image loads
+                            img.onload = () => URL.revokeObjectURL(url);
+                            
+                            currentOut.appendChild(img);
                             currentOut.classList.remove('hidden');
                         }
                     };
 
                     async function runCell(id) {
                         if (!pyodide) return alert("Wait for Python to load");
-                        const div = document.getElementById(\`cell-\${id}\`);
-                        const out = document.getElementById(\`out-\${id}\`);
-                        out.innerHTML = '';
-                        out.className = "mt-2 p-2 bg-gray-50 rounded font-mono text-sm whitespace-pre-wrap border border-gray-200";
-                        currentOut = out;
-                        
-                        try {
-                            let rawCode = div.cmInstance.getValue();
-                            const lines = rawCode.split('\\n');
-                            const cleanCodeLines = [];
+                        const div = document.getElementById(`cell-${id}`);
                             
                             // 1. Process Jupyter !pip install magic
                             for (let line of lines) {
@@ -381,24 +381,30 @@ export class PythonNotebook {
 
                             // 3. Matplotlib Hook: If they import it, we force SVG routing
                             if (code.includes('matplotlib') || code.includes('pyplot')) {
-                                await pyodide.runPythonAsync(\`
+                                await pyodide.runPythonAsync(`
 import matplotlib
 matplotlib.use('svg')
 import matplotlib.pyplot as plt
 import io, js
 def _custom_show():
     buf = io.BytesIO()
-    plt.savefig(buf, format='svg')
+    # bbox_inches='tight' removes the ugly white margins around plots
+    plt.savefig(buf, format='svg', bbox_inches='tight')
     buf.seek(0)
     js.appendPlot(buf.read().decode('utf-8'))
     plt.close('all')
 plt.show = _custom_show
-                                \`);
+                                `);
                             }
 
                             // 4. Run the code
                             if (code.trim() !== '') {
                                 let res = await pyodide.runPythonAsync(code);
+                                
+                                // Auto-show any plots if the user forgot to type plt.show()
+                                if (code.includes('matplotlib') || code.includes('pyplot')) {
+                                    await pyodide.runPythonAsync('if plt.get_fignums(): plt.show()');
+                                }
                                 
                                 // 5. Auto-echo the last expression (Jupyter style)
                                 if (res !== undefined) {

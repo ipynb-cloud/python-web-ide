@@ -2,7 +2,6 @@
     if (window.MoodleWidgetSystemInitialized) return;
     window.MoodleWidgetSystemInitialized = true;
 
-    // Helper: Simple String Hash
     function hashCode(str) {
         let hash = 0;
         for (let i = 0, len = str.length; i < len; i++) {
@@ -21,11 +20,11 @@
 
         const isReadOnly = targetTextarea.hasAttribute('readonly') || targetTextarea.hasAttribute('disabled');
 
-        // Clear placeholder and build iframe using standard SRC, not SRCDOC
         mountPoint.innerHTML = ''; 
         
         const initialLines = parseInt(mountPoint.getAttribute('data-initial-lines') || '15', 10);
-        mountPoint.style.height = `${(initialLines * 24) + 20}px`;
+        const initialHeight = (initialLines * 24) + 20; // Save this variable
+        mountPoint.style.height = `${initialHeight}px`;
         mountPoint.style.position = 'relative';
 
         const iframe = document.createElement('iframe');
@@ -34,7 +33,6 @@
         iframe.style.display = 'block';
         iframe.style.border = '1px solid #ccc';
         iframe.style.borderRadius = '4px';
-        // Point to the UI file you hosted on Cloudflare!
         iframe.src = 'https://python-web-ide.pages.dev/widget.html';
 
         mountPoint.appendChild(iframe);
@@ -62,14 +60,18 @@
             }
             else if (event.data.type === 'SYNC_HEIGHT') {
                 const newHeight = event.data.payload;
-                if (!mountPoint.style.height || parseInt(mountPoint.style.height) < newHeight) {
-                    mountPoint.style.height = `${newHeight}px`;
+                
+                // FIX: Ensure it shrinks back down, but never below initialLines
+                const targetHeight = Math.max(initialHeight, newHeight);
+                const currentHeight = parseInt(mountPoint.style.height) || 0;
+                
+                if (currentHeight !== targetHeight) {
+                    mountPoint.style.height = `${targetHeight}px`;
                 }
             }
         });
     }
 
-    // The Watcher: Hides native textareas immediately
     const observer = new MutationObserver((mutations) => {
         mutations.forEach(mutation => {
             mutation.addedNodes.forEach(node => {

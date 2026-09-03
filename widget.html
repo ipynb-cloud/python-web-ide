@@ -2,8 +2,11 @@
 <html>
 <head>
     <style>
-        body { margin: 0; padding: 10px; font-family: monospace; background: #e5e7eb; min-height: 100vh; position: relative; box-sizing: border-box; }
-        pre { margin: 0; outline: none; white-space: pre-wrap; word-wrap: break-word; min-height: 100vh; transition: opacity 0.3s; }
+        /* FIX: Move background to html. Remove all 100vh rules to break the loop! */
+        html { height: 100%; background: #e5e7eb; }
+        body { margin: 0; padding: 10px; font-family: monospace; box-sizing: border-box; overflow: hidden; }
+        pre { margin: 0; outline: none; white-space: pre-wrap; word-wrap: break-word; transition: opacity 0.3s; }
+        
         .modal-overlay { display: flex; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.8); z-index: 50; align-items: center; justify-content: center; flex-direction: column; }
         .modal-content { background: white; padding: 1.5rem 2rem; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); text-align: center; font-family: sans-serif; border: 1px solid #e5e7eb; }
         .modal-content p { margin: 0 0 1rem 0; font-weight: bold; color: #ef4444; }
@@ -58,6 +61,12 @@
             reconnectBtn.disabled = false;
         }
 
+        function sendHeight() {
+            // FIX: Accurately measure the text height only (plus 20px padding)
+            const height = editor.scrollHeight + 20; 
+            window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: height }, '*');
+        }
+
         function syncToServer() {
             const content = editor.innerText;
             pendingSyncId = Date.now().toString() + Math.random().toString();
@@ -75,7 +84,7 @@
 
         editor.addEventListener('input', () => {
             syncToServer();
-            window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: document.body.scrollHeight }, '*');
+            sendHeight();
         });
 
         reconnectBtn.addEventListener('click', () => {
@@ -106,7 +115,7 @@
                     unlockWidget();
                 }
                 clearTimeout(syncTimeout);
-                setTimeout(() => window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: document.body.scrollHeight }, '*'), 50);
+                setTimeout(sendHeight, 50);
             } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
                 if (event.data.hash === hashCode(editor.innerText)) {
                     clearTimeout(syncTimeout);
@@ -119,7 +128,9 @@
 
         window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
         syncTimeout = setTimeout(lockWidget, 500);
-        new ResizeObserver(() => window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: document.body.scrollHeight }, '*')).observe(document.body);
+        
+        // Watch for window width changes that cause text wrapping
+        new ResizeObserver(() => sendHeight()).observe(document.body);
     </script>
 </body>
 </html>

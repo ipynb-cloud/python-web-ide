@@ -2,11 +2,9 @@
 <html>
 <head>
     <style>
-        /* FIX: Move background to html. Remove all 100vh rules to break the loop! */
         html { height: 100%; background: #e5e7eb; }
         body { margin: 0; padding: 10px; font-family: monospace; box-sizing: border-box; overflow: hidden; }
         pre { margin: 0; outline: none; white-space: pre-wrap; word-wrap: break-word; transition: opacity 0.3s; }
-        
         .modal-overlay { display: flex; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.8); z-index: 50; align-items: center; justify-content: center; flex-direction: column; }
         .modal-content { background: white; padding: 1.5rem 2rem; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); text-align: center; font-family: sans-serif; border: 1px solid #e5e7eb; }
         .modal-content p { margin: 0 0 1rem 0; font-weight: bold; color: #ef4444; }
@@ -19,10 +17,7 @@
     <div id="error-modal" class="modal-overlay">
         <div class="modal-content">
             <p>Widget disconnected</p>
-            <button id="reconnect-btn">
-                <span id="btn-text">Try to connect</span>
-                <span id="btn-spinner" class="spinner"></span>
-            </button>
+            <button id="reconnect-btn"><span id="btn-text">Try to connect</span><span id="btn-spinner" class="spinner"></span></button>
         </div>
     </div>
     <pre id="editor" contenteditable="false" spellcheck="false">// Loading...</pre>
@@ -31,106 +26,58 @@
         const editor = document.getElementById('editor');
         const errorModal = document.getElementById('error-modal');
         const reconnectBtn = document.getElementById('reconnect-btn');
-        const btnSpinner = document.getElementById('btn-spinner');
-        const btnText = document.getElementById('btn-text');
-
-        let pendingSyncId = null;
-        let syncTimeout = null;
+        let pendingSyncId = null, syncTimeout = null;
 
         function hashCode(str) {
             let hash = 0;
             for (let i = 0, len = str.length; i < len; i++) {
-                let chr = str.charCodeAt(i);
-                hash = (hash << 5) - hash + chr; hash |= 0;
+                hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
             }
             return hash.toString();
         }
 
-        function lockWidget() {
-            editor.setAttribute('contenteditable', 'false');
-            editor.style.opacity = '0.5';
-            errorModal.style.display = 'flex';
-        }
-
-        function unlockWidget() {
-            editor.setAttribute('contenteditable', 'true');
-            editor.style.opacity = '1';
-            errorModal.style.display = 'none';
-            btnSpinner.style.display = 'none';
-            btnText.innerText = 'Try to connect';
-            reconnectBtn.disabled = false;
-        }
+        function lockWidget() { editor.setAttribute('contenteditable', 'false'); editor.style.opacity = '0.5'; errorModal.style.display = 'flex'; }
+        function unlockWidget() { editor.setAttribute('contenteditable', 'true'); editor.style.opacity = '1'; errorModal.style.display = 'none'; reconnectBtn.querySelector('.spinner').style.display = 'none'; reconnectBtn.disabled = false; reconnectBtn.querySelector('#btn-text').innerText = 'Try to connect'; }
 
         function sendHeight() {
-            // FIX: Accurately measure the text height only (plus 20px padding)
-            const height = editor.scrollHeight + 20; 
-            window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: height }, '*');
+            window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: editor.scrollHeight + 20 }, '*');
         }
 
         function syncToServer() {
             const content = editor.innerText;
             pendingSyncId = Date.now().toString() + Math.random().toString();
-            
-            window.parent.postMessage({ 
-                type: 'SYNC_CONTENT', 
-                payload: content, 
-                hash: hashCode(content), 
-                msgId: pendingSyncId 
-            }, '*');
-            
+            window.parent.postMessage({ type: 'SYNC_CONTENT', payload: content, hash: hashCode(content), msgId: pendingSyncId }, '*');
             clearTimeout(syncTimeout);
             syncTimeout = setTimeout(lockWidget, 500);
         }
 
-        editor.addEventListener('input', () => {
-            syncToServer();
-            sendHeight();
-        });
+        editor.addEventListener('input', () => { syncToServer(); sendHeight(); });
 
         reconnectBtn.addEventListener('click', () => {
-            btnSpinner.style.display = 'inline-block';
-            btnText.innerText = 'Connecting...';
+            reconnectBtn.querySelector('.spinner').style.display = 'inline-block';
+            reconnectBtn.querySelector('#btn-text').innerText = 'Connecting...';
             reconnectBtn.disabled = true;
-            
-            if (editor.innerText === '// Loading...') {
-                window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
-            } else {
-                syncToServer(); 
-            }
-            
-            syncTimeout = setTimeout(() => {
-                btnSpinner.style.display = 'none';
-                btnText.innerText = 'Try to connect';
-                reconnectBtn.disabled = false;
-            }, 1000);
+            if (editor.innerText === '// Loading...') window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+            else syncToServer();
+            syncTimeout = setTimeout(() => { unlockWidget(); lockWidget(); }, 1000);
         });
 
         window.addEventListener('message', (event) => {
             if (event.data.type === 'LOAD_CONTENT') {
                 editor.innerText = event.data.payload;
-                if (event.data.config && event.data.config.isReadOnly) {
-                    editor.setAttribute('contenteditable', 'false');
-                    errorModal.style.display = 'none'; 
-                } else {
-                    unlockWidget();
-                }
+                if (event.data.config && event.data.config.isReadOnly) { editor.setAttribute('contenteditable', 'false'); errorModal.style.display = 'none'; }
+                else unlockWidget();
                 clearTimeout(syncTimeout);
                 setTimeout(sendHeight, 50);
             } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
-                if (event.data.hash === hashCode(editor.innerText)) {
-                    clearTimeout(syncTimeout);
-                    unlockWidget();
-                } else {
-                    lockWidget();
-                }
+                if (event.data.hash === hashCode(editor.innerText)) { clearTimeout(syncTimeout); unlockWidget(); }
+                else lockWidget();
             }
         });
 
         window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
         syncTimeout = setTimeout(lockWidget, 500);
-        
-        // Watch for window width changes that cause text wrapping
-        new ResizeObserver(() => sendHeight()).observe(document.body);
+        new ResizeObserver(sendHeight).observe(document.body);
     </script>
 </body>
 </html>

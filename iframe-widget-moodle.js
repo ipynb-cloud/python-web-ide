@@ -18,10 +18,14 @@
         const targetTextarea = que.querySelector('textarea.qtype_essay_response, textarea.form-control, textarea.qtype_coderunner_answer');
         if (!targetTextarea) return;
 
+        // Belt & Suspenders: Ensure the textarea is hidden directly via JS styles
+        Object.assign(targetTextarea.style, { 
+            position: 'absolute', left: '-9999px', visibility: 'hidden', height: '1px' 
+        });
+
         const isReadOnly = targetTextarea.hasAttribute('readonly') || targetTextarea.hasAttribute('disabled');
         const initialHeight = parseInt(mountPoint.style.height) || 380;
         
-        // Find the iframe you pasted into the Moodle HTML
         const iframe = mountPoint.querySelector('iframe');
         if (!iframe) return;
 
@@ -51,10 +55,14 @@
                 if (parseInt(mountPoint.style.height) !== targetHeight) {
                     mountPoint.style.height = `${targetHeight}px`;
                 }
+                
+                // UX FIX: Fade the iframe in now that the size is perfectly calculated!
+                if (iframe.style.opacity === '0' || iframe.style.opacity === '') {
+                    iframe.style.opacity = '1';
+                }
             }
         });
 
-        // Race condition fix: Push data immediately in case iframe booted faster than this script
         if (iframe.contentWindow) {
             iframe.contentWindow.postMessage({
                 type: 'LOAD_CONTENT',
@@ -63,20 +71,6 @@
             }, '*');
         }
     }
-
-    // Fallback Watcher: Just in case the inline script was stripped or missed something
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach(m => m.addedNodes.forEach(node => {
-            if (node.nodeType === 1) { 
-                const que = node.classList.contains('que') ? node : node.closest('.que');
-                if (que && que.querySelector('.widget-mount-point')) {
-                    const ta = que.querySelector('textarea.qtype_essay_response, textarea.form-control, textarea.qtype_coderunner_answer');
-                    if (ta) Object.assign(ta.style, { position: 'absolute', left: '-9999px', visibility: 'hidden' });
-                }
-            }
-        }));
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
 
     function bootWidgets() {
         document.querySelectorAll('.widget-mount-point:not([data-widget-initialized])').forEach(mount => {

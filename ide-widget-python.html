@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Code Editor</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
+
+    <style>
+        /* --- GENERAL LAYOUT --- */
+        body, html {
+            height: 100%; margin: 0; padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2e2e2e; color: #d4d4d4;
+            overflow: hidden; display: flex; flex-direction: column;
+        }
+
+        /* --- DISCONNECT MODAL --- */
+        .modal-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(46, 46, 46, 0.8); z-index: 999; align-items: center; justify-content: center; flex-direction: column; }
+        .modal-content { background: #1e1e1e; padding: 1.5rem 2rem; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); text-align: center; border: 1px solid #333; }
+        .modal-content p { margin: 0 0 1rem 0; font-weight: bold; color: #f48771; }
+        .modal-content button { background: #0e639c; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.25rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 0 auto; }
+        .spinner { border: 2px solid rgba(255,255,255,0.3); border-top: 2px solid white; border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Main Toolbar */
+        .main-toolbar {
+            height: 40px; background-color: #333333; border-bottom: 1px solid #1e1e1e;
+            display: flex; align-items: center; padding: 0 15px; justify-content: space-between; flex-shrink: 0;
+        }
+        .main-title { font-weight: 600; color: #9cdcfe; font-size: 14px; }
+        .toolbar-left, .toolbar-actions { display: flex; gap: 10px; align-items: center; }
+
+        /* Container & Splitters */
+        .container { display: flex; flex-grow: 1; overflow: hidden; position: relative; flex-direction: row; }
+        #editor-wrapper, #output-wrapper { background-color: #1e1e1e; display: flex; flex-direction: column; overflow: hidden; flex-basis: 50%; flex-grow: 1; min-width: 0; min-height: 0; }
+        
+        .resizer { background-color: #444; flex-shrink: 0; z-index: 10; transition: background-color 0.2s; }
+        .resizer:hover, .resizer.active { background-color: #0e639c; }
+        .container.vertical-split .resizer { width: 8px; height: 100%; cursor: col-resize; border-left: 1px solid #111; border-right: 1px solid #111; }
+        .container.horizontal-split { flex-direction: column; }
+        .container.horizontal-split .resizer { width: 100%; height: 8px; cursor: row-resize; border-top: 1px solid #111; border-bottom: 1px solid #111; }
+        .container.output-hidden #output-wrapper, .container.output-hidden .resizer { display: none; }
+        .container.output-hidden #editor-wrapper { flex-basis: 100%; max-width: 100%; height: 100%; }
+        
+        .btn-show-output { display: none; background-color: #0e639c; color: white; padding: 3px 8px; font-size: 11px; border-radius: 2px; }
+        .container.output-hidden .btn-show-output { display: inline-flex !important; }
+
+        .panel-header { background-color: #252526; padding: 8px 15px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #cccccc; border-bottom: 1px solid #333; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+        
+        /* Editor Internals */
+        #custom-editor-container { display: flex; flex-grow: 1; position: relative; height: 100%; overflow: hidden; }
+        #line-numbers { width: 50px; height: 100%; background-color: #1e1e1e; border-right: 1px solid #333; text-align: right; padding: 15px 10px 15px 0; box-sizing: border-box; color: #606060; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; line-height: 1.5; overflow: hidden; flex-shrink: 0; user-select: none; }
+        #code-overlay-wrapper { flex-grow: 1; position: relative; height: 100%; overflow: hidden; }
+        
+        #highlighting, #editing { margin: 0; padding: 15px 5px; border: 0; width: 100%; height: 100%; position: absolute; top: 0; left: 0; box-sizing: border-box; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; line-height: 1.5; tab-size: 4; white-space: pre; overflow: auto; }
+        #highlighting { z-index: 1; background-color: #1e1e1e; pointer-events: none; }
+        #highlighting code { font-family: inherit; }
+        #editing { z-index: 2; color: transparent; background: transparent; caret-color: #d4d4d4; outline: none; resize: none; transition: opacity 0.2s; }
+        #editing::placeholder { color: #6a9955; font-style: italic; opacity: 0.6; }
+
+        /* Buttons & Syntax */
+        button { border: none; padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s ease; color: #cccccc; background-color: #3c3c3c; }
+        button:hover { background-color: #4c4c4c; }
+        .btn-run { background-color: #0e639c; color: white; }
+        .btn-run:hover { background-color: #1177bb; }
+        .btn-sm { padding: 2px 8px; font-size: 11px; }
+        
+        .token-keyword  { color: #569cd6; } 
+        .token-string   { color: #ce9178; } 
+        .token-fstring  { color: #f44747; } 
+        .token-comment  { color: #6a9955; font-style: italic; } 
+        .token-number   { color: #b5cea8; } 
+        .token-decorator{ color: #c586c0; } 
+
+        #output { flex-grow: 1; padding: 15px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; white-space: pre-wrap; overflow-y: auto; color: #cccccc; background-color: #1e1e1e; }
+        .output-error { color: #f48771; }
+        .output-success { color: #4ec9b0; font-style: italic; font-size: 12px; margin-top: 10px; display: block; }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="error-modal" class="modal-overlay">
+    <div class="modal-content">
+        <p>Sync disconnected</p>
+        <button id="reconnect-btn">
+            <span id="btn-text">Reconnect</span>
+            <span id="btn-spinner" class="spinner"></span>
+        </button>
+    </div>
+</div>
+
+<div class="main-toolbar">
+    <div class="toolbar-left">
+        <div class="main-title">PYTHON EDITOR</div>
+    </div>
+    <div class="toolbar-actions">
+        <button class="btn-layout" onclick="toggleLayout()" title="Change Layout">
+            <span id="layout-icon">◫</span> Layout
+        </button>
+        <button class="btn-run" onclick="runCode()">► Run Code</button>
+    </div>
+</div>
+
+<div class="container vertical-split" id="main-container">
+    <div id="editor-wrapper">
+        <div class="panel-header">
+            <span>CODE</span>
+            <button class="btn-show-output" onclick="showTerminal()">Show Output Panel</button>
+        </div>
+        <div id="custom-editor-container">
+            <div id="line-numbers">1</div>
+            <div id="code-overlay-wrapper">
+                <pre id="highlighting" aria-hidden="true"><code id="highlighting-content"></code></pre>
+                <textarea id="editing" spellcheck="false" placeholder="// Loading..."
+                    oninput="handleInput()" 
+                    onscroll="sync_scroll(this);" 
+                    onkeydown="handleKeyDown(event)"
+                    onpaste="handlePaste(event)"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="resizer" id="resizer"></div>
+
+    <div id="output-wrapper">
+        <div class="panel-header">
+            <span>OUTPUT</span>
+            <div style="display:flex; gap: 5px;">
+                <button class="btn-sm" onclick="clearOutput()">Clear</button>
+                <button class="btn-sm" onclick="hideTerminal()">Hide</button>
+            </div>
+        </div>
+        <div id="output"></div>
+    </div>
+</div>
+
+<script>
+    // --- WIDGET SYNC PROTOCOL ---
+    const errorModal = document.getElementById('error-modal');
+    const reconnectBtn = document.getElementById('reconnect-btn');
+    let pendingSyncId = null;
+    let syncTimeout = null;
+
+    function hashCode(str) {
+        let hash = 0;
+        for (let i = 0, len = str.length; i < len; i++) {
+            hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+        }
+        return hash.toString();
+    }
+
+    function lockWidget() { editing.readOnly = true; editing.style.opacity = '0.5'; errorModal.style.display = 'flex'; }
+    function unlockWidget() { editing.readOnly = false; editing.style.opacity = '1'; errorModal.style.display = 'none'; reconnectBtn.querySelector('.spinner').style.display = 'none'; reconnectBtn.disabled = false; reconnectBtn.querySelector('#btn-text').innerText = 'Reconnect'; }
+
+    function syncToServer() {
+        const content = editing.value;
+        pendingSyncId = Date.now().toString() + Math.random().toString();
+        window.parent.postMessage({ type: 'SYNC_CONTENT', payload: content, hash: hashCode(content), msgId: pendingSyncId }, '*');
+        clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(lockWidget, 500);
+    }
+
+    reconnectBtn.addEventListener('click', () => {
+        reconnectBtn.querySelector('.spinner').style.display = 'inline-block';
+        reconnectBtn.querySelector('#btn-text').innerText = 'Connecting...';
+        reconnectBtn.disabled = true;
+        if (editing.value === '' || editing.value === '// Loading...') window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+        else syncToServer();
+        syncTimeout = setTimeout(() => { unlockWidget(); lockWidget(); }, 1000);
+    });
+
+    window.addEventListener('message', (event) => {
+        if (event.data.type === 'LOAD_CONTENT') {
+            editing.value = event.data.payload;
+            updateUI(event.data.payload); // Update highlighting without triggering sync
+            
+            if (event.data.config && event.data.config.isReadOnly) { 
+                editing.readOnly = true; errorModal.style.display = 'none'; 
+            } else { 
+                unlockWidget(); 
+            }
+            
+            clearTimeout(syncTimeout);
+            // Tell parent to lock height to 500px min (IDE view)
+            setTimeout(() => window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: 500 }, '*'), 50);
+
+        } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
+            if (event.data.hash === hashCode(editing.value)) { clearTimeout(syncTimeout); unlockWidget(); }
+            else lockWidget();
+        }
+    });
+
+    // Boot request
+    window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+    syncTimeout = setTimeout(lockWidget, 500);
+
+    // --- EDITOR LOGIC ---
+    const editing = document.getElementById('editing');
+    const highlightingContent = document.getElementById('highlighting-content');
+    const highlighting = document.getElementById('highlighting');
+    const lineNumbers = document.getElementById('line-numbers');
+    const outputDiv = document.getElementById("output");
+    
+    let currentLineCount = 0;
+
+    function handleInput() {
+        updateUI(editing.value);
+        syncToServer(); // Trigger the save to Moodle
+    }
+
+    function updateUI(text) {
+        let result_text = text;
+        if(text[text.length-1] == "\n") result_text += " "; 
+        highlightingContent.innerHTML = highlightPython(result_text);
+        
+        const lines = text.split('\n').length;
+        if (lines !== currentLineCount) {
+            lineNumbers.innerHTML = Array(lines).fill(0).map((_, i) => i + 1).join('<br>');
+            currentLineCount = lines;
+        }
+        sync_scroll(editing);
+    }
+
+    function sync_scroll(element) {
+        highlighting.scrollTop = element.scrollTop;
+        highlighting.scrollLeft = element.scrollLeft;
+        lineNumbers.scrollTop = element.scrollTop;
+    }
+
+    // --- SMART TYPING & UNDO PRESERVATION ---
+    function insertTextAtCursor(textarea, text) {
+        textarea.focus();
+        if (!document.execCommand('insertText', false, text)) {
+            const start = textarea.selectionStart, end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + text.length;
+            handleInput();
+        }
+    }
+    function deleteSelectedText(textarea) {
+        textarea.focus();
+        if (!document.execCommand('delete', false, null)) {
+            const start = textarea.selectionStart, end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start;
+            handleInput();
+        }
+    }
+    function getLineIndent(text, index) {
+        const lineStart = text.lastIndexOf('\n', index - 1) + 1;
+        let i = lineStart;
+        while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i++;
+        return text.substring(lineStart, i);
+    }
+
+    function handleKeyDown(e) {
+        const val = editing.value, start = editing.selectionStart, end = editing.selectionEnd;
+        if(e.key == "Tab") {
+            e.preventDefault(); insertTextAtCursor(editing, "    ");
+        } 
+        else if (e.key == "Backspace" && start === end && start > 0) {
+            const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+            const textBeforeCursor = val.substring(lineStart, start);
+            if (/^\s+$/.test(textBeforeCursor) && textBeforeCursor.length >= 4 && val.substring(start - 4, start) === "    ") {
+                e.preventDefault();
+                editing.selectionStart = start - 4; editing.selectionEnd = start;
+                deleteSelectedText(editing);
+            }
+        }
+        else if (e.key == "Enter") {
+            if (e.ctrlKey || e.metaKey) { e.preventDefault(); runCode(); return; }
+            e.preventDefault();
+            const currentLine = val.substring(val.lastIndexOf('\n', start - 1) + 1, start);
+            const lineWithoutComment = currentLine.split('#')[0].trimEnd();
+            
+            let nextIndent = getLineIndent(val, start);
+            if (lineWithoutComment.endsWith(":")) nextIndent += "    ";
+
+            insertTextAtCursor(editing, "\n" + nextIndent);
+            setTimeout(() => sync_scroll(editing), 0);
+        }
+    }
+
+    function handlePaste(e) {
+        // Simple plain-text extraction to keep code pure
+        const clipboardData = e.clipboardData || window.clipboardData;
+        if (!clipboardData) return;
+        e.preventDefault();
+        let text = clipboardData.getData('text');
+        if (text) {
+            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            insertTextAtCursor(editing, text);
+            sync_scroll(editing);
+        }
+    }
+
+    // --- SYNTAX HIGHLIGHTING ---
+    function highlightPython(code) {
+        code = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const tokenRegex = /((?:#).*?$)|((?:\b[fF])?(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'))|\b(def|class|import|from|return|if|else|elif|while|for|in|print|try|except|raise|True|False|None|as|with|finally|yield|lambda|pass|break|continue|and|or|not|is|self)\b|(\b\d+\b)|(@\w+)/gm;
+        return code.replace(tokenRegex, function(match, comment, string, keyword, number, decorator) {
+            if (comment) return `<span class="token-comment">${comment}</span>`;
+            if (string) return `<span class="token-string">${string}</span>`;
+            if (keyword) return `<span class="token-keyword">${keyword}</span>`;
+            if (number) return `<span class="token-number">${number}</span>`;
+            if (decorator) return `<span class="token-decorator">${decorator}</span>`;
+            return match;
+        });
+    }
+
+    // --- SKULPT EXECUTION ---
+    function outf(text) { 
+        var span = document.createElement('span'); span.innerText = text;
+        outputDiv.appendChild(span); outputDiv.scrollTop = outputDiv.scrollHeight;
+    } 
+    function builtinRead(x) {
+        if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) throw "Err";
+        return Sk.builtinFiles["files"][x];
+    }
+    
+    function runCode() { 
+        outputDiv.innerHTML = "";
+        if (typeof Sk === 'undefined') { outf("Error: Python engine loading..."); return; }
+        if (layoutMode === 2) toggleLayout(0);
+
+        setTimeout(() => {
+            Sk.configure({ output: outf, read: builtinRead, __future__: Sk.python3 }); 
+            Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, editing.value, true))
+            .then(() => {
+                var s = document.createElement('span'); s.className = 'output-success'; s.innerText = "\n>>> Finished successfully.";
+                outputDiv.appendChild(s); outputDiv.scrollTop = outputDiv.scrollHeight;
+            }, (err) => {
+                var s = document.createElement('span'); s.className = 'output-error'; s.innerText = "\n" + err.toString();
+                outputDiv.appendChild(s); outputDiv.scrollTop = outputDiv.scrollHeight;
+            });
+        }, 150);
+    }
+    function clearOutput() { outputDiv.innerHTML = ""; }
+
+    // --- LAYOUT & RESIZING ---
+    const container = document.getElementById('main-container');
+    const editorWrapper = document.getElementById('editor-wrapper');
+    const outputWrapper = document.getElementById('output-wrapper');
+    const resizer = document.getElementById('resizer');
+    const layoutIcon = document.getElementById('layout-icon');
+    let layoutMode = 0; 
+
+    function toggleLayout(forceMode = -1) {
+        layoutMode = forceMode !== -1 ? forceMode : (layoutMode + 1) % 3;
+        container.className = "container";
+        editorWrapper.style.flexBasis = outputWrapper.style.flexBasis = editorWrapper.style.height = outputWrapper.style.height = editorWrapper.style.width = outputWrapper.style.width = "";
+
+        if (layoutMode === 0) { container.classList.add("vertical-split"); layoutIcon.innerText = "◫"; resizer.style.display = "block"; }
+        else if (layoutMode === 1) { container.classList.add("horizontal-split"); layoutIcon.innerText = "☰"; resizer.style.display = "block"; }
+        else { container.classList.add("output-hidden"); layoutIcon.innerText = "□"; }
+    }
+    function hideTerminal() { toggleLayout(2); }
+    function showTerminal() { toggleLayout(0); }
+
+    let isResizing = false;
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true; resizer.classList.add('active');
+        document.body.style.cursor = layoutMode === 0 ? 'col-resize' : 'row-resize';
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        const rect = container.getBoundingClientRect();
+        if (layoutMode === 0) {
+            let percent = Math.max(10, Math.min(90, ((e.clientX - rect.left) / rect.width) * 100));
+            editorWrapper.style.flexBasis = percent + '%'; outputWrapper.style.flexBasis = (100 - percent) + '%';
+        } else if (layoutMode === 1) {
+            let percent = Math.max(10, Math.min(90, ((e.clientY - rect.top) / rect.height) * 100));
+            editorWrapper.style.flexBasis = percent + '%'; outputWrapper.style.flexBasis = (100 - percent) + '%';
+        }
+    });
+    document.addEventListener('mouseup', () => {
+        if (isResizing) { isResizing = false; resizer.classList.remove('active'); document.body.style.cursor = 'default'; }
+    });
+</script>
+
+</body>
+</html>

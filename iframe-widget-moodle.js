@@ -12,30 +12,18 @@
     }
 
     function initWidget(mountPoint) {
-        const questionContainer = mountPoint.closest('.que');
-        if (!questionContainer) return;
+        const que = mountPoint.closest('.que');
+        if (!que) return;
 
-        const targetTextarea = questionContainer.querySelector('textarea.qtype_essay_response, textarea.form-control, textarea.qtype_coderunner_answer');
+        const targetTextarea = que.querySelector('textarea.qtype_essay_response, textarea.form-control, textarea.qtype_coderunner_answer');
         if (!targetTextarea) return;
 
         const isReadOnly = targetTextarea.hasAttribute('readonly') || targetTextarea.hasAttribute('disabled');
-
-        mountPoint.innerHTML = ''; 
+        const initialHeight = parseInt(mountPoint.style.height) || 380;
         
-        const initialLines = parseInt(mountPoint.getAttribute('data-initial-lines') || '15', 10);
-        const initialHeight = (initialLines * 24) + 20; // Save this variable
-        mountPoint.style.height = `${initialHeight}px`;
-        mountPoint.style.position = 'relative';
-
-        const iframe = document.createElement('iframe');
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        iframe.style.display = 'block';
-        iframe.style.border = '1px solid #ccc';
-        iframe.style.borderRadius = '4px';
-        iframe.src = 'https://python-web-ide.pages.dev/widget.html';
-
-        mountPoint.appendChild(iframe);
+        // Find the iframe you pasted into the Moodle HTML
+        const iframe = mountPoint.querySelector('iframe');
+        if (!iframe) return;
 
         window.addEventListener('message', (event) => {
             if (event.source !== iframe.contentWindow) return;
@@ -59,37 +47,34 @@
                 }, '*');
             }
             else if (event.data.type === 'SYNC_HEIGHT') {
-                const newHeight = event.data.payload;
-                
-                // FIX: Ensure it shrinks back down, but never below initialLines
-                const targetHeight = Math.max(initialHeight, newHeight);
-                const currentHeight = parseInt(mountPoint.style.height) || 0;
-                
-                if (currentHeight !== targetHeight) {
+                const targetHeight = Math.max(initialHeight, event.data.payload);
+                if (parseInt(mountPoint.style.height) !== targetHeight) {
                     mountPoint.style.height = `${targetHeight}px`;
                 }
             }
         });
+
+        // Race condition fix: Push data immediately in case iframe booted faster than this script
+        if (iframe.contentWindow) {
+            iframe.contentWindow.postMessage({
+                type: 'LOAD_CONTENT',
+                payload: targetTextarea.value,
+                config: { isReadOnly: isReadOnly }
+            }, '*');
+        }
     }
 
+    // Fallback Watcher: Just in case the inline script was stripped or missed something
     const observer = new MutationObserver((mutations) => {
-        mutations.forEach(mutation => {
-            mutation.addedNodes.forEach(node => {
-                if (node.nodeType === 1) { 
-                    const queContainer = node.classList.contains('que') ? node : node.closest('.que');
-                    if (queContainer && queContainer.querySelector('.widget-mount-point')) {
-                        const ta = queContainer.querySelector('textarea.qtype_essay_response, textarea.form-control, textarea.qtype_coderunner_answer');
-                        if (ta) {
-                            Object.assign(ta.style, {
-                                position: 'absolute', width: '1px', height: '1px', padding: '0', 
-                                margin: '-1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', border: '0'
-                            });
-                            ta.tabIndex = -1;
-                        }
-                    }
+        mutations.forEach(m => m.addedNodes.forEach(node => {
+            if (node.nodeType === 1) { 
+                const que = node.classList.contains('que') ? node : node.closest('.que');
+                if (que && que.querySelector('.widget-mount-point')) {
+                    const ta = que.querySelector('textarea.qtype_essay_response, textarea.form-control, textarea.qtype_coderunner_answer');
+                    if (ta) Object.assign(ta.style, { position: 'absolute', left: '-9999px', visibility: 'hidden' });
                 }
-            });
-        });
+            }
+        }));
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 

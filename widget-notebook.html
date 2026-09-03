@@ -132,32 +132,69 @@
             syncTimeout = setTimeout(() => { unlockWidget(); lockWidget(); }, 1000);
         });
 
-        window.addEventListener('message', (event) => {
-            if (event.data.type === 'LOAD_CONTENT') {
-                if (event.data.config && event.data.config.isReadOnly) {
-                    isWidgetReadOnly = true;
-                }
-                
-                // Parse existing data or load default
-                let initialCells = [];
-                if (event.data.payload) {
-                    try { initialCells = JSON.parse(event.data.payload); } catch(e) {}
-                }
-                
-                if (initialCells.length === 0) {
-                    initialCells = [{ id: Math.random().toString(36).substring(2,9), content: 'print("Hello from Moodle Widget!")' }];
-                }
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'LOAD_CONTENT') {
+        if (event.data.config && event.data.config.isReadOnly) {
+            isWidgetReadOnly = true;
+        }
+        
+        let initialCells = [];
+        const rawPayload = event.data.payload || "";
 
-                window.notebook = new Notebook('notebook-container', initialCells);
-                unlockWidget();
-                clearTimeout(syncTimeout);
-                setTimeout(sendHeight, 100);
-
-            } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
-                clearTimeout(syncTimeout); 
-                unlockWidget();
+        if (rawPayload.trim()) {
+            try {
+                // 1. Attempt to parse as JSON
+                const parsed = JSON.parse(rawPayload);
+                
+                if (Array.isArray(parsed)) {
+                    // Standard Widget Array Format
+                    initialCells = parsed;
+                } else if (parsed.cells && Array.isArray(parsed.cells)) {
+                    // Jupyter IPYNB Format
+                    initialCells = parsed.cells.filter(c => c.cell_type === 'code').map(c => ({
+                        id: Math.random().toString(36).substring(2, 9),
+                        content: (Array.isArray(c.source) ? c.source.join('') : c.source).trimEnd(),
+                        output: ''
+                    }));
+                }
+            } catch(e) {
+                // 2. Fallback to Text/Markdown formats if JSON parsing fails
+                if (rawPayload.includes('# %%')) {
+                    // Markdown chunks
+                    const chunks = rawPayload.split(/# %%\s*\[(?<type>.*?)\]/g);
+                    for(let i=1; i<chunks.length; i+=2) {
+                        initialCells.push({ 
+                            id: Math.random().toString(36).substring(2, 9), 
+                            content: chunks[i+1].replace(/^\n/, '').trimEnd(), 
+                            output: '' 
+                        });
+                    }
+                } else {
+                    // 3. Plain Python text
+                    initialCells = [{ 
+                        id: Math.random().toString(36).substring(2, 9), 
+                        content: rawPayload, 
+                        output: '' 
+                    }];
+                }
             }
-        });
+        }
+        
+        // 4. Default state if the textarea is completely empty
+        if (initialCells.length === 0) {
+            initialCells = [{ id: Math.random().toString(36).substring(2,9), content: 'print("Hello from Moodle!")' }];
+        }
+
+        window.notebook = new Notebook('notebook-container', initialCells);
+        unlockWidget();
+        clearTimeout(syncTimeout);
+        setTimeout(sendHeight, 100);
+
+    } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
+        clearTimeout(syncTimeout); 
+        unlockWidget();
+    }
+});
 
         // Request initial content on boot
         window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');

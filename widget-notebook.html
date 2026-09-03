@@ -17,7 +17,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/markdown/markdown.min.js"></script>
-    <!-- CodeMirror Placeholder extension -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/display/placeholder.min.js"></script>
 
     <!-- Marked.js for Markdown rendering -->
@@ -76,7 +75,7 @@
         .cell-container:hover .drag-handle { opacity: 1; }
         .cell-container.sortable-ghost { opacity: 0.4; background-color: #e2e8f0; }
 
-        /* Output Box Styling - Neutral Grey Output */
+        /* Output Box Styling - Jupyter Style */
         .output-box {
             font-family: 'Fira Code', monospace;
             font-size: 13px;
@@ -242,6 +241,8 @@
                 this.editors = {}; // Stores CodeMirror instances by cell ID
                 this.executionCount = 1; // Jupyter style execution counter
                 this.currentTheme = 'default'; // Track the active CodeMirror theme
+                this.pendingSync = null;
+                this.widgetHostIsReady = false;
                 
                 // Initial Default State
                 this.cells = [
@@ -274,11 +275,61 @@
                 ];
 
                 this.init();
+                this.setupWidgetCommunication();
             }
 
             generateId() {
                 return Math.random().toString(36).substring(2, 9);
             }
+
+            setupWidgetCommunication() {
+                window.addEventListener('message', (event) => {
+                    const data = event.data;
+                    
+                    if (data.type === 'LOAD_CONTENT') {
+                        this.widgetHostIsReady = true;
+                        if (data.payload && data.payload.trim() !== '') {
+                            this.importStringAsMD(data.payload);
+                        }
+                    } else if (data.type === 'ACK_CONTENT') {
+                         this.pendingSync = null; // Mark sync successful
+                    }
+                });
+
+                // Inform the host that we are ready to receive data
+                // In a true Moodle widget context, we might be inside a deeper iframe, so we post to window.parent
+                if (window.parent !== window) {
+                     window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+                }
+            }
+            
+            triggerHostSync() {
+                if (!this.widgetHostIsReady && window.parent === window) return; // Not in widget mode
+                
+                const mdContent = this.getMarkdownExportString();
+                const msgId = this.generateId();
+                this.pendingSync = msgId;
+                
+                if (window.parent !== window) {
+                     window.parent.postMessage({
+                         type: 'SYNC_CONTENT',
+                         payload: mdContent,
+                         msgId: msgId
+                     }, '*');
+                }
+                
+                this.syncHeight();
+            }
+            
+            syncHeight() {
+                if (window.parent !== window) {
+                     // Get document height
+                     const body = document.body, html = document.documentElement;
+                     const height = Math.max( body.scrollHeight, body.offsetHeight, html.clientHeight, html.scrollHeight, html.offsetHeight );
+                     window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: height }, '*');
+                }
+            }
+
 
             async init() {
                 this.render();
@@ -299,6 +350,7 @@
                                 editor.refresh();
                             }
                         });
+                        this.triggerHostSync();
                     },
                 });
 
@@ -372,6 +424,7 @@ plt.show = _custom_show
                 span.className = classes;
                 span.innerText = text + "\n";
                 window.currentPyodideOutputDiv.appendChild(span);
+                this.syncHeight();
             }
 
             async runCell(cellId) {
@@ -388,6 +441,8 @@ plt.show = _custom_show
                 
                 // Get code from CodeMirror instance
                 const code = this.editors[cellId].getValue();
+                cell.content = code; // Update internal state before sync
+                this.triggerHostSync();
                 
                 const outputDiv = document.getElementById(`output-content-${cellId}`);
                 const outputWrapper = document.getElementById(`output-wrapper-${cellId}`);
@@ -456,6 +511,7 @@ except Exception:
                 // Remove target to avoid cross-contamination
                 window.currentPyodideOutputDiv = null;
                 cell.output = outputDiv.innerHTML; // Cache output state
+                this.syncHeight();
             }
 
             async runAll() {
@@ -466,46 +522,63 @@ except Exception:
                 }
             }
 
+            importStringAsMD(text) {
+                const chunks = text.split(/# %%\s*\[(?<type>.*?)\]/g);
+                
+                const newCells = [];
+                for(let i=1; i<chunks.length; i+=2) {
+                    const type = chunks[i];
+                    let content = chunks[i+1].replace(/^\n/, ''); // remove single leading newline
+                    
+                    let locked = false;
+                    let deletable = true;
+                    
+                    // Parse Tags
+                    if (/^#\s*locked=true/im.test(content) || /^<!--\s*locked=true\s*-->/im.test(content)) locked = true;
+                    if (/^#\s*deletable=false/im.test(content) || /^<!--\s*deletable=false\s*-->/im.test(content)) deletable = false;
+                    
+                    // Strip Tag metadata out of the content
+                    content = content.replace(/^#\s*(locked=true|deletable=false)\s*$/igm, '');
+                    content = content.replace(/^<!--\s*(locked=true|deletable=false)\s*-->\s*$/igm, '');
+                    content = content.trimEnd(); // Cleanup trailing whitespace
+
+                    newCells.push({
+                        id: this.generateId(),
+                        type: type === 'python' ? 'code' : (type === 'plain' ? 'text' : 'markdown'),
+                        locked,
+                        deletable,
+                        content,
+                        output: ''
+                    });
+                }
+                
+                // Fallback if no # %% markers were found (e.g. standard block of code)
+                if (newCells.length === 0 && text.trim() !== '') {
+                     newCells.push({
+                        id: this.generateId(),
+                        type: 'code',
+                        locked: false,
+                        deletable: true,
+                        content: text.trimEnd(),
+                        output: ''
+                    });
+                }
+
+                if (newCells.length > 0) {
+                    this.cells = newCells;
+                    this.render();
+                }
+            }
+
             importMD(event) {
                 const file = event.target.files[0];
                 if (!file) return;
                 
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const text = e.target.result;
-                    const chunks = text.split(/# %%\s*\[(?<type>.*?)\]/g);
-                    
-                    const newCells = [];
-                    for(let i=1; i<chunks.length; i+=2) {
-                        const type = chunks[i];
-                        let content = chunks[i+1].replace(/^\n/, ''); // remove single leading newline
-                        
-                        let locked = false;
-                        let deletable = true;
-                        
-                        // Parse Tags
-                        if (/^#\s*locked=true/im.test(content) || /^<!--\s*locked=true\s*-->/im.test(content)) locked = true;
-                        if (/^#\s*deletable=false/im.test(content) || /^<!--\s*deletable=false\s*-->/im.test(content)) deletable = false;
-                        
-                        // Strip Tag metadata out of the content
-                        content = content.replace(/^#\s*(locked=true|deletable=false)\s*$/igm, '');
-                        content = content.replace(/^<!--\s*(locked=true|deletable=false)\s*-->\s*$/igm, '');
-                        content = content.trimEnd(); // Cleanup trailing whitespace
-
-                        newCells.push({
-                            id: this.generateId(),
-                            type: type === 'python' ? 'code' : (type === 'plain' ? 'text' : 'markdown'),
-                            locked,
-                            deletable,
-                            content,
-                            output: ''
-                        });
-                    }
-                    if (newCells.length > 0) {
-                        this.cells = newCells;
-                        this.render();
-                    }
+                    this.importStringAsMD(e.target.result);
                     event.target.value = ''; // Reset input
+                    this.triggerHostSync();
                 };
                 reader.readAsText(file);
             }
@@ -539,6 +612,7 @@ except Exception:
                         
                         this.cells = newCells;
                         this.render();
+                        this.triggerHostSync();
                     } catch(err) {
                         console.error("Invalid IPYNB file", err);
                         alert("Could not parse valid Jupyter Notebook format.");
@@ -565,6 +639,7 @@ except Exception:
                     this.cells.push(newCell);
                 }
                 this.render();
+                this.triggerHostSync();
                 
                 if (index === null) {
                     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
@@ -583,6 +658,7 @@ except Exception:
                         cell.isEditing = true; 
                     }
                     this.render();
+                    this.triggerHostSync();
                 }
             }
 
@@ -590,6 +666,7 @@ except Exception:
                 this.cells = this.cells.filter(c => c.id !== cellId);
                 if(this.editors[cellId]) delete this.editors[cellId];
                 this.render();
+                this.triggerHostSync();
             }
 
             toggleLocked(cellId) {
@@ -600,6 +677,7 @@ except Exception:
                     }
                     cell.locked = !cell.locked;
                     this.render();
+                    this.triggerHostSync();
                 }
             }
 
@@ -608,6 +686,7 @@ except Exception:
                 if (cell) {
                     cell.deletable = !cell.deletable;
                     this.render();
+                    this.triggerHostSync();
                 }
             }
 
@@ -624,7 +703,7 @@ except Exception:
                 }
             }
 
-            exportToMarkdown() {
+            getMarkdownExportString() {
                 let mdContent = "";
                 this.cells.forEach(cell => {
                     const content = this.editors[cell.id] ? this.editors[cell.id].getValue() : cell.content;
@@ -639,9 +718,11 @@ except Exception:
                     }
                     mdContent += content + "\n\n";
                 });
-                
-                console.log("Exported Notebook Data:\n", mdContent);
-                
+                return mdContent;
+            }
+
+            exportToMarkdown() {
+                const mdContent = this.getMarkdownExportString();
                 const blob = new Blob([mdContent], { type: 'text/markdown' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -740,6 +821,7 @@ except Exception:
                             mdEditContainer.classList.remove('hidden');
                             mdEditContainer.classList.add('flex');
                             mdTextarea.focus();
+                            this.syncHeight();
                         };
 
                         const toggleView = () => {
@@ -751,6 +833,7 @@ except Exception:
                             mdEditContainer.classList.add('hidden');
                             mdEditContainer.classList.remove('flex');
                             mdView.classList.remove('hidden');
+                            this.triggerHostSync();
                         };
 
                         mdView.addEventListener('dblclick', toggleEdit);
@@ -784,7 +867,10 @@ except Exception:
                         textArea.readOnly = cell.locked;
                         if (cell.locked) textArea.classList.add('opacity-70');
                         
-                        textArea.addEventListener('input', (e) => { cell.content = e.target.value; });
+                        textArea.addEventListener('input', (e) => { 
+                            cell.content = e.target.value; 
+                            this.triggerHostSync(); 
+                        });
                         textWrapper.appendChild(textArea);
                         contentArea.appendChild(textWrapper);
 
@@ -822,7 +908,10 @@ except Exception:
                             this.editors[cell.id] = editor;
                             setTimeout(() => editor.refresh(), 50);
 
-                            editor.on('change', () => { cell.content = editor.getValue(); });
+                            editor.on('change', () => { 
+                                cell.content = editor.getValue(); 
+                                this.triggerHostSync();
+                            });
                             
                             if (!cell.locked) {
                                 editor.setOption("extraKeys", {
@@ -851,6 +940,7 @@ except Exception:
                             cell.output = '';
                             outputWrapper.classList.add('hidden');
                             document.getElementById(`output-content-${cell.id}`).innerHTML = '';
+                            this.syncHeight();
                         };
                         outputWrapper.appendChild(clearBtn);
 
@@ -882,6 +972,9 @@ except Exception:
 
                     this.container.appendChild(cellWrapper);
                 });
+                
+                // Need a slight delay to allow the DOM to reflow before height calculation
+                setTimeout(() => this.syncHeight(), 50);
             }
         }
 

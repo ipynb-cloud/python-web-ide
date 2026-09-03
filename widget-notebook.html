@@ -56,9 +56,19 @@
                 Starting Kernel...
             </div>
         </div>
-        <button onclick="notebook.runAll()" class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm">
-            Run All
-        </button>
+        <div class="flex items-center gap-2">
+            <button onclick="document.getElementById('md-upload').click()" class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm">
+                Import MD
+            </button>
+            <button onclick="notebook.exportMD()" class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors shadow-sm">
+                Export MD
+            </button>
+            <button onclick="notebook.runAll()" class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm">
+                Run All
+            </button>
+        </div>
+        <!-- Hidden file input for Markdown import -->
+        <input type="file" id="md-upload" accept=".md" class="hidden" onchange="notebook.importMD(event)">
     </header>
 
     <!-- Notebook Area -->
@@ -139,9 +149,12 @@
                 }
                 
                 let initialCells = [];
-                const rawPayload = event.data.payload || "";
+                let rawPayload = event.data.payload || "";
 
-                if (rawPayload.trim()) {
+                // Strip outer <pre> tags if Moodle wraps the default response
+                rawPayload = rawPayload.trim().replace(/^<pre[^>]*>/i, '').replace(/<\/pre>$/i, '').trim();
+
+                if (rawPayload) {
                     try {
                         // 1. Attempt to parse as JSON
                         const parsed = JSON.parse(rawPayload);
@@ -360,6 +373,52 @@ plt.show = _custom_show
                 syncToServer();
             }
 
+            exportMD() {
+                let mdContent = '';
+                this.cells.forEach(cell => {
+                    mdContent += `# %% [python]\n${cell.content}\n\n`;
+                });
+                const blob = new Blob([mdContent], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'notebook.md';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+
+            importMD(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const content = e.target.result;
+                    let newCells = [];
+                    
+                    if (content.includes('# %%')) {
+                        const chunks = content.split(/# %%\s*\[(?<type>.*?)\]/g);
+                        for(let i=1; i<chunks.length; i+=2) {
+                            newCells.push({ 
+                                id: this.generateId(), 
+                                content: chunks[i+1].replace(/^\n/, '').trimEnd(), 
+                                output: '' 
+                            });
+                        }
+                    } else {
+                        newCells = [{ id: this.generateId(), content: content.trimEnd(), output: '' }];
+                    }
+
+                    if (newCells.length > 0) {
+                        this.cells = newCells;
+                        this.render();
+                        syncToServer();
+                    }
+                    event.target.value = ''; // Reset input so the same file can be loaded again if needed
+                };
+                reader.readAsText(file);
+            }
+
             render() {
                 this.container.innerHTML = '';
                 
@@ -387,9 +446,14 @@ plt.show = _custom_show
                     const editorWrapper = document.createElement('div');
                     editorWrapper.className = 'relative group/editor border border-slate-300 rounded shadow-sm overflow-hidden';
                     
+                    // Styled to fit in exactly 1 line while maintaining 1em size constraints
                     const runBtn = document.createElement('button');
-                    runBtn.className = 'run-btn absolute bottom-3 right-3 z-10 w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md shadow-sm border border-blue-200 opacity-40 hover:opacity-100 transition-all';
-                    runBtn.innerHTML = `<svg class="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+                    runBtn.className = 'run-btn absolute z-10 flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-sm shadow-sm border border-blue-200 opacity-40 hover:opacity-100 transition-all';
+                    runBtn.style.width = '1.5em';
+                    runBtn.style.height = '1.5em';
+                    runBtn.style.bottom = '2px';
+                    runBtn.style.right = '4px';
+                    runBtn.innerHTML = `<svg style="width: 1em; height: 1em; margin-left: 2px;" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
                     runBtn.onclick = () => this.runCell(cell.id);
                     editorWrapper.appendChild(runBtn);
 

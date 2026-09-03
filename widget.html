@@ -2,9 +2,28 @@
 <html>
 <head>
     <style>
-        html { height: 100%; background: #e5e7eb; }
-        body { margin: 0; padding: 10px; font-family: monospace; box-sizing: border-box; overflow: hidden; }
-        pre { margin: 0; outline: none; white-space: pre-wrap; word-wrap: break-word; transition: opacity 0.3s; }
+        /* Fill the iframe */
+        html, body { height: 100%; margin: 0; background: #ffffff; }
+        body { padding: 10px; font-family: monospace; box-sizing: border-box; overflow: hidden; }
+        
+        /* The native textarea */
+        textarea {
+            width: 100%;
+            height: 100%; /* Fill the body completely */
+            margin: 0;
+            padding: 8px;
+            border: 1px dashed #cbd5e1; /* The dashed border so you can see it fills the space */
+            border-radius: 4px;
+            box-sizing: border-box;
+            outline: none;
+            resize: none; /* Disable manual drag, let the iframe parent resize it */
+            overflow: hidden; /* Hide internal scrollbars, iframe expands instead */
+            font-family: inherit;
+            font-size: 14px;
+            transition: opacity 0.3s;
+            background: transparent;
+        }
+
         .modal-overlay { display: flex; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.8); z-index: 50; align-items: center; justify-content: center; flex-direction: column; }
         .modal-content { background: white; padding: 1.5rem 2rem; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); text-align: center; font-family: sans-serif; border: 1px solid #e5e7eb; }
         .modal-content p { margin: 0 0 1rem 0; font-weight: bold; color: #ef4444; }
@@ -20,7 +39,9 @@
             <button id="reconnect-btn"><span id="btn-text">Try to connect</span><span id="btn-spinner" class="spinner"></span></button>
         </div>
     </div>
-    <pre id="editor" contenteditable="false" spellcheck="false">// Loading...</pre>
+    
+    <!-- Using a true textarea now -->
+    <textarea id="editor" spellcheck="false" placeholder="// Loading..."></textarea>
     
     <script>
         const editor = document.getElementById('editor');
@@ -36,15 +57,23 @@
             return hash.toString();
         }
 
-        function lockWidget() { editor.setAttribute('contenteditable', 'false'); editor.style.opacity = '0.5'; errorModal.style.display = 'flex'; }
-        function unlockWidget() { editor.setAttribute('contenteditable', 'true'); editor.style.opacity = '1'; errorModal.style.display = 'none'; reconnectBtn.querySelector('.spinner').style.display = 'none'; reconnectBtn.disabled = false; reconnectBtn.querySelector('#btn-text').innerText = 'Try to connect'; }
+        // Use readOnly instead of contenteditable
+        function lockWidget() { editor.readOnly = true; editor.style.opacity = '0.5'; errorModal.style.display = 'flex'; }
+        function unlockWidget() { editor.readOnly = false; editor.style.opacity = '1'; errorModal.style.display = 'none'; reconnectBtn.querySelector('.spinner').style.display = 'none'; reconnectBtn.disabled = false; reconnectBtn.querySelector('#btn-text').innerText = 'Try to connect'; }
 
         function sendHeight() {
-            window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: editor.scrollHeight + 20 }, '*');
+            // Trick to measure actual text height: shrink to 1px, measure, restore to 100%
+            editor.style.height = '1px';
+            const contentHeight = editor.scrollHeight;
+            editor.style.height = '100%';
+            
+            // Send height + 20px for body padding
+            window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: contentHeight + 20 }, '*');
         }
 
         function syncToServer() {
-            const content = editor.innerText;
+            // Use .value for textarea
+            const content = editor.value;
             pendingSyncId = Date.now().toString() + Math.random().toString();
             window.parent.postMessage({ type: 'SYNC_CONTENT', payload: content, hash: hashCode(content), msgId: pendingSyncId }, '*');
             clearTimeout(syncTimeout);
@@ -57,20 +86,21 @@
             reconnectBtn.querySelector('.spinner').style.display = 'inline-block';
             reconnectBtn.querySelector('#btn-text').innerText = 'Connecting...';
             reconnectBtn.disabled = true;
-            if (editor.innerText === '// Loading...') window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+            if (editor.value === '') window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
             else syncToServer();
             syncTimeout = setTimeout(() => { unlockWidget(); lockWidget(); }, 1000);
         });
 
         window.addEventListener('message', (event) => {
             if (event.data.type === 'LOAD_CONTENT') {
-                editor.innerText = event.data.payload;
-                if (event.data.config && event.data.config.isReadOnly) { editor.setAttribute('contenteditable', 'false'); errorModal.style.display = 'none'; }
+                // Use .value for textarea
+                editor.value = event.data.payload;
+                if (event.data.config && event.data.config.isReadOnly) { editor.readOnly = true; errorModal.style.display = 'none'; }
                 else unlockWidget();
                 clearTimeout(syncTimeout);
                 setTimeout(sendHeight, 50);
             } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
-                if (event.data.hash === hashCode(editor.innerText)) { clearTimeout(syncTimeout); unlockWidget(); }
+                if (event.data.hash === hashCode(editor.value)) { clearTimeout(syncTimeout); unlockWidget(); }
                 else lockWidget();
             }
         });

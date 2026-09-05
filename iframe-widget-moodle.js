@@ -26,6 +26,26 @@
         const isReadOnly = targetTextarea.hasAttribute('readonly') || targetTextarea.hasAttribute('disabled');
         const initialHeight = parseInt(mountPoint.style.height) || 380;
         
+        // --- NEW: Template Seeding Logic ---
+        let initialPayload = targetTextarea.value;
+        
+        // If the Moodle textarea is empty (first load), seed it with the template
+        if (!initialPayload || initialPayload.trim() === '') {
+            const template = que.querySelector('template.widget-initial-state');
+            if (template) {
+                // Extract content and decode any HTML entities (e.g., &lt;) safely
+                const txt = document.createElement("textarea");
+                txt.innerHTML = template.innerHTML;
+                initialPayload = txt.value.trim();
+                
+                // Seed the Moodle textarea so this initial state is preserved on save
+                targetTextarea.value = initialPayload;
+                targetTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+                targetTextarea.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+        // -----------------------------------
+
         const iframe = mountPoint.querySelector('iframe');
         if (!iframe) return;
 

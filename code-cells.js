@@ -4,7 +4,6 @@ class CodeCellElement extends window.BaseNotebookCell {
         this.output = this.getAttribute('output') || '';
         super.connectedCallback();
 
-        // Listen for kernel state broadcasts to update button UX
         window.addEventListener('kernel-status-changed', this._kernelStatusHandler = (e) => {
             this.updateKernelUIState(e.detail.isReady);
         });
@@ -22,12 +21,10 @@ class CodeCellElement extends window.BaseNotebookCell {
     }
 
     mountContent(container) {
-        // Enforce min-h-[3.25rem] (52px) to guarantee Action Button and Toolbar never vertically collide
         this.editorWrap = document.createElement('div');
-        this.editorWrap.className = 'w-full flex-1 flex flex-col min-h-[3.25rem] bg-slate-50/50 rounded-md relative box-border cm-wrapper';
+        this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] bg-slate-50/50 rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90' : ''}`;
         container.appendChild(this.editorWrap);
         
-        // Native capturing listener intercepts Shift+Enter BEFORE CodeMirror can create a newline
         this.editorWrap.addEventListener('keydown', (e) => {
             if (e.shiftKey && e.key === 'Enter') {
                 e.preventDefault();
@@ -45,9 +42,17 @@ class CodeCellElement extends window.BaseNotebookCell {
             }
 
             const customExtensions = [];
-            
             if (typeof cm6.python === 'function') {
                 customExtensions.push(cm6.python());
+            }
+
+            // Lock the code editor entirely if this cell is locked
+            if (this.isLocked) {
+                const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
+                if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
+                
+                const EditorState = cm6.EditorState || (cm6.state ? cm6.state.EditorState : null);
+                if (EditorState && EditorState.readOnly) customExtensions.push(EditorState.readOnly.of(true));
             }
 
             const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
@@ -78,7 +83,6 @@ class CodeCellElement extends window.BaseNotebookCell {
             const state = cm6.createEditorState(this.content, { extensions: customExtensions });
             this.editorView.setState(state);
 
-            // Sync initial state if Pyodide isn't ready yet
             if (window.notebookCore && window.notebookCore.kernel) {
                 this.updateKernelUIState(window.notebookCore.kernel.isReady);
             }
@@ -89,7 +93,6 @@ class CodeCellElement extends window.BaseNotebookCell {
 
         this.buildOutputUI();
         
-        // Append Output Box FIRST, then re-append the Inserter so Inserter sits at the very bottom
         this.appendChild(this.outputWrapper); 
         if (this.botInserter) this.appendChild(this.botInserter);
     }
@@ -107,7 +110,7 @@ class CodeCellElement extends window.BaseNotebookCell {
         outHeader.innerHTML = `
             <div class="relative flex items-center justify-center rounded text-slate-500 font-medium px-1 cursor-default pointer-events-none"><span>output</span></div>
             <button class="expand-btn hidden text-slate-400 hover:text-blue-500 p-0.5 rounded transition-colors ml-0.5 border-l border-slate-200 pl-1 flex items-center gap-1" title="Toggle Expansion">
-                <svg class="w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                <svg class="w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7-7"></path></svg>
                 <span class="btn-text font-medium tracking-tight"></span>
             </button>
             <button class="text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 border-l border-slate-200 pl-1 clear-btn" title="clear output">
@@ -193,7 +196,7 @@ class CodeCellElement extends window.BaseNotebookCell {
         if (this.checkScroll) this.checkScroll();
     }
 
-    focusCell() { if(this.editorView) this.editorView.focus(); }
+    focusCell() { if(this.editorView && !this.isLocked) this.editorView.focus(); }
 
     applyHysteresis() {
         if (!this.outputContent) return;

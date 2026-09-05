@@ -5,7 +5,9 @@ class MarkdownCellElement extends window.BaseNotebookCell {
     }
 
     mountContent(container) {
-        // View Mode Shrinks to 1 line naturally (1.75rem)
+        // Locked markdown cells force themselves into view mode permanently
+        if (this.isLocked) this.isEditing = false;
+
         this.viewDiv = document.createElement('div');
         this.viewDiv.className = `markdown-body cursor-pointer min-h-[1.75rem] flex-1 ${this.isEditing ? 'hidden' : ''}`;
         this.viewDiv.innerHTML = marked.parse(this.content || '*Empty Markdown. Double click to edit.*');
@@ -13,12 +15,11 @@ class MarkdownCellElement extends window.BaseNotebookCell {
         MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
 
         this.viewDiv.addEventListener('dblclick', () => {
-            if (this.isReadOnly) return;
+            if (this.isLocked) return; // Prevent unlocking via double click
             this.isEditing = true;
             this.toggleMode();
         });
         
-        // Edit Mode needs minimum 52px (3.25rem) to cleanly fit Toolbar + Action Button
         this.editDiv = document.createElement('div');
         this.editDiv.className = `w-full flex-col ${this.isEditing ? 'flex' : 'hidden'}`;
         
@@ -49,11 +50,13 @@ class MarkdownCellElement extends window.BaseNotebookCell {
 
         setTimeout(() => { 
             autosize(this.textarea);
-            if (this.isEditing) this.textarea.focus(); 
+            if (this.isEditing && !this.isLocked) this.textarea.focus(); 
         }, 0);
     }
 
     getActionButtonConfig() {
+        if (this.isLocked) return null; // No action button on locked markdown
+
         if (this.isEditing) {
             return { icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`, title: 'Render Markdown (Shift+Enter)' };
         } else {
@@ -62,6 +65,7 @@ class MarkdownCellElement extends window.BaseNotebookCell {
     }
 
     handleActionClick() {
+        if (this.isLocked) return;
         this.isEditing = !this.isEditing;
         if (!this.isEditing) {
             this.viewDiv.innerHTML = marked.parse(this.content || '*Empty Markdown cell*');
@@ -72,7 +76,7 @@ class MarkdownCellElement extends window.BaseNotebookCell {
     }
 
     toggleMode() {
-        if (this.isEditing) {
+        if (this.isEditing && !this.isLocked) {
             this.viewDiv.classList.add('hidden');
             this.editDiv.classList.remove('hidden');
             this.editDiv.classList.add('flex');
@@ -93,6 +97,6 @@ class MarkdownCellElement extends window.BaseNotebookCell {
         if (this.textarea) autosize.update(this.textarea); 
         this.dispatchAction('cell-height-changed');
     }
-    focusCell() { if(this.isEditing && this.textarea) this.textarea.focus(); }
+    focusCell() { if(this.isEditing && this.textarea && !this.isLocked) this.textarea.focus(); }
 }
 customElements.define('notebook-markdown-cell', MarkdownCellElement);

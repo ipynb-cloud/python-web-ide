@@ -2,12 +2,8 @@ window.NOTEBOOK_CONFIG = {
     outputCurtailThresholdLines: 40,
     outputCurtailShowLines: 10,
     outputLineHeightPx: 21,
-    autoClearOutputOnEdit: true,
-    inserterDelayMs: 250
+    autoClearOutputOnEdit: true
 };
-
-// Set CSS Variable for UI delays
-document.documentElement.style.setProperty('--inserter-delay', (window.NOTEBOOK_CONFIG.inserterDelayMs || 250) + 'ms');
 
 const MathJaxHelper = {
     queue: function(el, onComplete) {
@@ -138,6 +134,7 @@ class BaseNotebookCell extends HTMLElement {
 
     disconnectedCallback() {
         if (this.resizeObserver) this.resizeObserver.disconnect();
+        if (this._kernelStatusHandler) window.removeEventListener('kernel-status-changed', this._kernelStatusHandler);
     }
 
     dispatchAction(eventName, detail = {}) {
@@ -145,10 +142,10 @@ class BaseNotebookCell extends HTMLElement {
     }
 
     renderShell() {
-        // Base outer wrapper has no margins. Spacing is strictly provided by the inserter blocks.
-        this.className = 'cell-wrapper relative flex flex-col w-full group/wrapper block box-border';
+        // Tightened vertical margin (my-1.5 matches the 12px inserter gap perfectly)
+        this.className = 'cell-wrapper relative flex flex-col w-full my-1.5 group/wrapper block box-border';
 
-        // Base height is 1.75rem (28px). Code cells & Markdown edits will specifically override their internal wrap to min-h-[3.25rem]
+        // Base height is 1.75rem (28px). Code cells will override internal wrap to min-h-[3.25rem]
         this.mainBox = document.createElement('div');
         this.mainBox.className = 'cell-container group/cell relative bg-white border border-slate-200 rounded-md shadow-sm flex items-stretch transition-all hover:border-slate-300 min-h-[1.75rem] box-border';
         if (this.isReadOnly) this.mainBox.classList.add('bg-slate-50');
@@ -193,6 +190,7 @@ class BaseNotebookCell extends HTMLElement {
         }
 
         this.actionBtnElement = document.createElement('button');
+        // Managed by global layout CSS overrides for placement
         this.actionBtnElement.className = 'cell-action-btn absolute z-30 flex items-center justify-center w-7 h-7 text-white bg-blue-500 hover:bg-blue-600 rounded-full shadow-md transition-all opacity-0 hidden group-hover/cell:opacity-100';
         this.actionBtnElement.onclick = () => this.handleActionClick();
         this.contentArea.appendChild(this.actionBtnElement);
@@ -201,26 +199,21 @@ class BaseNotebookCell extends HTMLElement {
         this.appendChild(this.mainBox);
 
         if (!this.isReadOnly) {
-            // Bottom Inserter matches the 80% central expansion logic perfectly
-            this.botInserter = document.createElement('div');
-            this.botInserter.className = 'flex items-center justify-center w-full relative z-10';
-            this.botInserter.title = `Add cell below`;
-            
-            const hitbox = document.createElement('div');
-            hitbox.className = 'group/inserter inserter-hitbox flex items-center justify-center cursor-pointer w-4/5 relative mx-auto';
-            hitbox.onclick = () => this.dispatchAction('cell-insert-below');
-            
-            hitbox.innerHTML = `
-                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center">
-                    <div class="h-px w-full bg-transparent inserter-line"></div>
-                </div>
-                <div class="inserter-btn relative z-10 flex items-center justify-center w-5 h-5 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-sm">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
+            // FIXED: Centered 100% + 6px transform guarantees perfect symmetry when expanding to h-6
+            const botInserter = document.createElement('div');
+            botInserter.className = 'bot-inserter absolute left-0 right-0 h-3 flex items-center justify-center group/inserter cursor-pointer w-4/5 mx-auto z-10 transition-all duration-300 hover:h-6';
+            botInserter.style.top = 'calc(100% + 6px)';
+            botInserter.style.transform = 'translateY(-50%)';
+            botInserter.title = `Add cell below`;
+            botInserter.innerHTML = `
+                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors duration-150"></div></div>
+                <div class="relative z-10 flex items-center justify-center bg-transparent opacity-0 group-hover/inserter:opacity-100 transition-all duration-300 text-slate-400 group-hover/inserter:text-blue-500 mx-auto w-5 h-5 rounded-full scale-50 group-hover/inserter:scale-100 delay-100">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 </div>
             `;
-            
-            this.botInserter.appendChild(hitbox);
-            this.appendChild(this.botInserter);
+            botInserter.onclick = () => this.dispatchAction('cell-insert-below');
+            this.botInserter = botInserter;
+            this.appendChild(botInserter);
         }
     }
 
@@ -308,10 +301,18 @@ class NotebookCore {
 
     updateKernelStatus(status) {
         const el = document.getElementById('kernel-status');
+        const runBtn = document.getElementById('run-all-btn');
+        const isReady = (status === 'ready');
+        
         if (status === 'loading') el.innerHTML = `Loading Kernel... <span class="w-3 h-3 ml-1 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin inline-block"></span>`;
         else if (status === 'loading-packages') el.innerHTML = `Loading Packages...`;
         else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready`;
         else el.innerHTML = `<span class="h-2 w-2 rounded-full bg-red-500 inline-block mr-1"></span> Error`;
+
+        if (runBtn) runBtn.disabled = !isReady;
+        
+        // Notify all cells globally that kernel state changed
+        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady } }));
     }
 
     loadData(cellDataArray) {

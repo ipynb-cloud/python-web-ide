@@ -3,15 +3,31 @@ class CodeCellElement extends window.BaseNotebookCell {
     connectedCallback() {
         this.output = this.getAttribute('output') || '';
         super.connectedCallback();
+
+        // Listen for kernel state broadcasts to update button UX
+        window.addEventListener('kernel-status-changed', this._kernelStatusHandler = (e) => {
+            this.updateKernelUIState(e.detail.isReady);
+        });
+    }
+
+    updateKernelUIState(isReady) {
+        if (!this.actionBtnElement) return;
+        if (!isReady) {
+            this.actionBtnElement.classList.add('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+            this.actionBtnElement.innerHTML = `<span class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>`;
+        } else {
+            this.actionBtnElement.classList.remove('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+            this.setButtonState('default'); 
+        }
     }
 
     mountContent(container) {
-        // Enforce exact min-h-[3.25rem] (52px) geometric alignment guarantee
+        // Enforce min-h-[3.25rem] (52px) to guarantee Action Button and Toolbar never vertically collide
         this.editorWrap = document.createElement('div');
         this.editorWrap.className = 'w-full flex-1 flex flex-col min-h-[3.25rem] bg-slate-50/50 rounded-md relative box-border cm-wrapper';
         container.appendChild(this.editorWrap);
         
-        // Add Shift+Enter native interception for CM6
+        // Native capturing listener intercepts Shift+Enter BEFORE CodeMirror can create a newline
         this.editorWrap.addEventListener('keydown', (e) => {
             if (e.shiftKey && e.key === 'Enter') {
                 e.preventDefault();
@@ -62,16 +78,20 @@ class CodeCellElement extends window.BaseNotebookCell {
             const state = cm6.createEditorState(this.content, { extensions: customExtensions });
             this.editorView.setState(state);
 
+            // Sync initial state if Pyodide isn't ready yet
+            if (window.notebookCore && window.notebookCore.kernel) {
+                this.updateKernelUIState(window.notebookCore.kernel.isReady);
+            }
+
             setTimeout(() => { this.dispatchAction('cell-height-changed'); }, 50);
 
         }, 0);
 
         this.buildOutputUI();
-        if (this.botInserter) {
-            this.insertBefore(this.outputWrapper, this.botInserter);
-        } else {
-            this.appendChild(this.outputWrapper); 
-        }
+        
+        // Append Output Box FIRST, then re-append the Inserter so Inserter sits at the very bottom
+        this.appendChild(this.outputWrapper); 
+        if (this.botInserter) this.appendChild(this.botInserter);
     }
 
     buildOutputUI() {
@@ -215,13 +235,7 @@ class CodeCellElement extends window.BaseNotebookCell {
     }
 
     async handleActionClick() {
-        if (!window.notebookCore.kernel || !window.notebookCore.kernel.isReady) {
-            this.outputContent.innerHTML = `<span class="text-orange-500 font-semibold">Kernel is still initializing... Please wait.</span>`;
-            this.outputWrapper.classList.remove('hidden');
-            this.outputWrapper.classList.add('flex');
-            this.dispatchAction('cell-height-changed');
-            return;
-        }
+        if (!window.notebookCore.kernel || !window.notebookCore.kernel.isReady) return;
         
         this.content = this.editorView ? this.editorView.state.doc.toString() : this.content;
         this.setButtonState('running');

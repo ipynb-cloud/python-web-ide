@@ -18,7 +18,7 @@ class MarkdownCellElement extends window.BaseNotebookCell {
             this.toggleMode();
         });
         
-        // Edit Mode needs geometric minimum (3.25rem = 52px) to elegantly stack Toolbar and Action Btn
+        // Edit Mode needs minimum 52px (3.25rem) to cleanly fit Toolbar + Action Button
         this.editDiv = document.createElement('div');
         this.editDiv.className = `w-full flex-col ${this.isEditing ? 'flex' : 'hidden'}`;
         

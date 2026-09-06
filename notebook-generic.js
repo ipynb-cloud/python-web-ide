@@ -101,8 +101,14 @@ class PyodideWorkerKernel {
 
         // Route status updates back to the UI header
         if (type === 'status') {
-            if (status === 'ready') this.isReady = true;
-            if (status === 'error') this.isReady = false;
+            if (status === 'ready') {
+                this.isReady = true;
+                window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
+            }
+            if (status === 'error') {
+                this.isReady = false;
+                window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
+            }
             if (this.statusCallback) this.statusCallback(status);
             
             if (status === 'ready' && this.callbacks[id]) {
@@ -165,6 +171,7 @@ class PyodideWorkerKernel {
             this.worker.terminate();
         }
         this.isReady = false;
+        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
     }
 }
 

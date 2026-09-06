@@ -10,139 +10,161 @@ const MathJaxHelper = {
     }
 };
 
-class PyodideKernel {
-    constructor(maxOutputChars = 200) {
+class PyodideWorkerKernel {
+    constructor(maxOutputChars = 50000, options = {}) {
         this.isReady = false;
-        this.pyodide = null;
-        this.currentOutputDiv = null;
-        this.maxOutputChars = maxOutputChars;
-        this.currentOutputCount = 0;
-        this.outputLimitExceeded = false;
-    }
-
-    async init(statusCallback) {
-        statusCallback('loading');
-        try {
-            this.pyodide = await loadPyodide({
-                stdout: (text) => this.writeOutput(text, 'text-slate-700'),
-                stderr: (text) => this.writeOutput(text, 'text-red-500 font-semibold')
-            });
-            
-            statusCallback('loading-packages');
-            await this.pyodide.loadPackage(['matplotlib', 'numpy']);
-
-            window._injectKernelSvg = (svgData) => this.injectSvg(svgData);
-            
-            const setupCode = `
-import matplotlib
-matplotlib.use('svg')
-import matplotlib.pyplot as plt
-import io
-import js
-plt.close('all')
-
-def _custom_show():
-    buf = io.BytesIO()
-    plt.savefig(buf, format='svg', bbox_inches='tight')
-    buf.seek(0)
-    js._injectKernelSvg(buf.read().decode('utf-8'))
-    plt.close()
-
-plt.show = _custom_show
-`;                  
-            await this.pyodide.loadPackagesFromImports(setupCode);
-            await this.pyodide.runPythonAsync(setupCode);
-            
-            this.isReady = true;
-            statusCallback('ready');
-            
-            window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
-        } catch (err) {
-            statusCallback('error');
-            console.error("Kernel Boot Error:", err);
-            window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
-        }
-    }
-
-    writeOutput(text, classes) {
-        if (!this.currentOutputDiv || this.outputLimitExceeded) return;
+        this.worker = null;
+        this.callbacks = {}; // Maps message IDs to Promise resolve/reject
+        this.targetDivs = {}; // Maps message IDs to target output divs
         
-        this.currentOutputCount += text.length;
-        if (this.currentOutputCount > this.maxOutputChars) {
-            this.outputLimitExceeded = true;
-            const span = document.createElement('span');
-            span.className = 'text-red-500 font-bold block mt-2';
-            span.innerText = `[Error: Output exceeded maximum limit of ${this.maxOutputChars} characters]`;
-            this.currentOutputDiv.appendChild(span);
+        this.maxOutputChars = maxOutputChars;
+        this.currentOutputCounts = {};
+        
+        // Settings for routing and performance
+        this.kernelMode = options.kernelMode || 'local'; // 'local' or 'host'
+        this.preloadMatplotlib = options.preloadMatplotlib !== false; // default true
+    }
+
+    init(statusCallback) {
+        this.statusCallback = statusCallback;
+        const initId = this.generateId();
+        
+        // We set up a Promise manually for the INIT step to await it if needed
+        new Promise((resolve, reject) => {
+            this.callbacks[initId] = { resolve, reject };
+        });
+
+        if (this.kernelMode === 'local') {
+            // Spin up a local worker right here in the iframe
+            this.worker = new Worker('pyodide-worker.js');
+            this.worker.onmessage = (e) => this.handleMessage(e.data);
+        } else {
+            // Moodle Singleton Mode: Route messages up to the parent window
+            this.hostListener = (e) => {
+                if (e.data.type === 'KERNEL_REPLY') this.handleMessage(e.data.payload);
+            };
+            window.addEventListener('message', this.hostListener);
+            
+            this.worker = {
+                postMessage: (msg) => window.parent.postMessage({ type: 'KERNEL_REQ', payload: msg }, '*'),
+                terminate: () => window.removeEventListener('message', this.hostListener)
+            };
+        }
+        
+        this.worker.postMessage({ 
+            id: initId, 
+            action: 'INIT', 
+            config: { preloadMatplotlib: this.preloadMatplotlib } 
+        });
+    }
+
+    generateId() {
+        return Math.random().toString(36).substring(2, 10);
+    }
+
+    writeOutput(id, text, classes) {
+        const targetDiv = this.targetDivs[id];
+        if (!targetDiv) return;
+        
+        this.currentOutputCounts[id] = (this.currentOutputCounts[id] || 0) + text.length;
+        if (this.currentOutputCounts[id] > this.maxOutputChars) {
+            // Append the error once, then ignore further output for this ID
+            if (this.currentOutputCounts[id] - text.length <= this.maxOutputChars) {
+                const span = document.createElement('span');
+                span.className = 'text-red-500 font-bold block mt-2';
+                span.innerText = `[Error: Output exceeded maximum limit of ${this.maxOutputChars} characters]`;
+                targetDiv.appendChild(span);
+            }
             return;
         }
 
         const span = document.createElement('span');
         span.className = classes;
         span.innerText = text + "\n";
-        this.currentOutputDiv.appendChild(span);
+        targetDiv.appendChild(span);
     }
 
-    injectSvg(svgData) {
-        if (!this.currentOutputDiv) return;
+    injectSvg(id, svgData) {
+        const targetDiv = this.targetDivs[id];
+        if (!targetDiv) return;
+        
         const wrap = document.createElement('div');
         wrap.className = 'inline-block bg-white my-2 p-2 rounded shadow-sm border border-slate-200'; 
         wrap.innerHTML = svgData;
         const svgEl = wrap.querySelector('svg');
         if(svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
-        this.currentOutputDiv.appendChild(wrap);
+        targetDiv.appendChild(wrap);
     }
 
-    async execute(code, targetDiv) {
-        this.currentOutputDiv = targetDiv;
-        this.currentOutputCount = 0;
-        this.outputLimitExceeded = false;
+    handleMessage(msg) {
+        const { id, type, status, text, error, data } = msg;
 
-        await this.pyodide.loadPackagesFromImports(code);
-        
-        // --- TIMEOUT & OUTPUT LIMIT HACK ---
-        await this.pyodide.runPythonAsync(`
-import sys
-import time
-import js
-_pynote_start_time = time.time()
-
-def _pynote_tracer(frame, event, arg):
-    if time.time() - _pynote_start_time > 0.5:  
-        sys.settrace(None)
-        raise TimeoutError("Execution stopped: Time limit (5s) exceeded. Do you have an infinite loop?")
-    
-    if getattr(js.window.notebookCore.kernel, 'outputLimitExceeded', False):
-        sys.settrace(None)
-        raise RuntimeError("Execution stopped: Output exceeded maximum limit. Do you have an infinite print loop?")
-        
-    return _pynote_tracer
-
-sys.settrace(_pynote_tracer)
-        `);
-
-        let result;
-        try {
-            result = await this.pyodide.runPythonAsync(code);
-        } finally {
-            // Always clear the tracer when done, even if the code errors out normally
-            await this.pyodide.runPythonAsync(`sys.settrace(None)`);
+        // Route status updates back to the UI header
+        if (type === 'status') {
+            if (status === 'ready') this.isReady = true;
+            if (status === 'error') this.isReady = false;
+            if (this.statusCallback) this.statusCallback(status);
+            
+            if (status === 'ready' && this.callbacks[id]) {
+                this.callbacks[id].resolve();
+                delete this.callbacks[id];
+            }
+            return;
         }
-        // --- END TIMEOUT HACK ---
 
-        try { await this.pyodide.runPythonAsync(`import matplotlib.pyplot as plt\nif plt.get_fignums(): plt.show()`); } catch(e) {}
-
-        if (result !== undefined) {
-            this.pyodide.globals.set('_last_result', result);
-            const reprStr = this.pyodide.runPython('repr(_last_result)');
-            if (reprStr !== 'None') {
+        // Route outputs to the correct active cell
+        if (type === 'stdout') this.writeOutput(id, text, 'text-slate-700');
+        if (type === 'stderr') this.writeOutput(id, text, 'text-red-500 font-semibold');
+        if (type === 'svg') this.injectSvg(id, data);
+        
+        if (type === 'result') {
+            const targetDiv = this.targetDivs[id];
+            if (targetDiv) {
                 const outWrap = document.createElement('div');
                 outWrap.className = 'mt-1 font-mono text-sm text-slate-800';
-                outWrap.innerText = reprStr;
-                this.currentOutputDiv.appendChild(outWrap);
+                outWrap.innerText = text;
+                targetDiv.appendChild(outWrap);
             }
         }
-        this.currentOutputDiv = null;
+
+        // Execution Completion Handling
+        if (type === 'success' || type === 'error') {
+            if (this.callbacks[id]) {
+                if (type === 'error') this.callbacks[id].reject(error);
+                else this.callbacks[id].resolve();
+                
+                delete this.callbacks[id];
+                delete this.targetDivs[id];
+                delete this.currentOutputCounts[id];
+            }
+        }
+    }
+
+    execute(code, targetDiv) {
+        return new Promise((resolve, reject) => {
+            if (!this.isReady) {
+                return reject("Kernel is not ready yet.");
+            }
+            
+            const execId = this.generateId();
+            this.callbacks[execId] = { resolve, reject };
+            this.targetDivs[execId] = targetDiv;
+            this.currentOutputCounts[execId] = 0;
+
+            this.worker.postMessage({
+                id: execId,
+                action: 'EXECUTE',
+                code: code,
+                config: { preloadMatplotlib: this.preloadMatplotlib }
+            });
+        });
+    }
+
+    destroy() {
+        if (this.worker && typeof this.worker.terminate === 'function') {
+            this.worker.terminate();
+        }
+        this.isReady = false;
     }
 }
 
@@ -384,7 +406,9 @@ class NotebookCore {
             isReadOnly: false,
             defaultCellType: 'code',
             kernelType: 'pyodide', // Choose 'pyodide' or 'skulpt'
-            maxOutputChars: 50000, // Failsafe for infinite print loops
+            kernelMode: 'local',   // Choose 'local' (worker) or 'host' (moodle singleton)
+            preloadMatplotlib: true, // Loads heavy packages during boot
+            maxOutputChars: 50000, 
             disableInsertAll: false,
             disableInsertTop: false,
             outputCurtailThresholdLines: 40,
@@ -412,7 +436,11 @@ class NotebookCore {
         if (this.options.kernelType === 'skulpt') {
             this.kernel = new SkulptKernel(this.options.maxOutputChars);
         } else {
-            this.kernel = new PyodideKernel(this.options.maxOutputChars);
+            // Instantiate the Worker Kernel instead!
+            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, {
+                kernelMode: this.options.kernelMode,
+                preloadMatplotlib: this.options.preloadMatplotlib
+            });
         }
         
         this.kernel.init((status) => this.updateKernelStatus(status));
@@ -485,10 +513,18 @@ class NotebookCore {
             }
         });
 
+        // Hard terminate the current worker if it exists (fixes unrecoverable freezes)
+        if (this.kernel && typeof this.kernel.destroy === 'function') {
+            this.kernel.destroy();
+        }
+
         if (this.options.kernelType === 'skulpt') {
             this.kernel = new SkulptKernel(this.options.maxOutputChars);
         } else {
-            this.kernel = new PyodideKernel(this.options.maxOutputChars);
+            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, {
+                kernelMode: this.options.kernelMode,
+                preloadMatplotlib: this.options.preloadMatplotlib
+            });
         }
         await this.kernel.init((status) => this.updateKernelStatus(status));
     }

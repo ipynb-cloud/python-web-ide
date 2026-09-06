@@ -100,7 +100,6 @@ plt.show = _custom_show
     }
 }
 
-// --- STREAMING_CHUNK:Configuring Base Notebook Cell Architecture... ---
 class BaseNotebookCell extends HTMLElement {
     constructor() {
         super();
@@ -137,17 +136,16 @@ class BaseNotebookCell extends HTMLElement {
     }
 
     renderShell() {
-        // Tightened vertical margin (my-1.5 matches the 12px inserter gap perfectly)
         this.className = 'cell-wrapper relative flex flex-col w-full my-1.5 group/wrapper block box-border';
 
         this.mainBox = document.createElement('div');
         this.mainBox.className = 'cell-container group/cell relative bg-white border border-slate-200 rounded-md shadow-sm flex items-stretch transition-all hover:border-slate-300 min-h-[1.75rem] box-border';
         
-        if (this.isLocked || (window.notebookCore && window.notebookCore.isReadOnly)) {
+        const isReadOnlyGlobal = window.notebookCore && window.notebookCore.options.isReadOnly;
+
+        if (this.isLocked || isReadOnlyGlobal) {
             this.mainBox.classList.add('bg-slate-50');
         }
-
-        const isReadOnlyGlobal = window.notebookCore && window.notebookCore.isReadOnly;
 
         if (!this.isLocked && !isReadOnlyGlobal) {
             const dragHandle = document.createElement('div');
@@ -158,7 +156,6 @@ class BaseNotebookCell extends HTMLElement {
         this.contentArea = document.createElement('div');
         this.contentArea.className = 'flex-1 relative flex flex-col min-w-0 p-0 box-border min-h-0';
         
-        // Locked cells suppress the top toolbar entirely (no type change, no delete)
         if (!this.isLocked && !isReadOnlyGlobal) {
             const toolbar = document.createElement('div');
             toolbar.className = 'cell-toolbar absolute z-40 flex items-center gap-1 bg-white/95 backdrop-blur-sm shadow-sm border border-slate-200 rounded-md px-1.5 py-0.5 opacity-0 group-hover/cell:opacity-100 transition-all text-xs';
@@ -201,7 +198,6 @@ class BaseNotebookCell extends HTMLElement {
         const disableInsert = window.notebookCore && window.notebookCore.options.disableInsertAll;
         if (!isReadOnlyGlobal && !disableInsert) {
             this.botInserter = document.createElement('div');
-            // Delayed expansion CSS, perfectly anchored to the center of the 12px vertical margin
             this.botInserter.className = 'absolute left-0 right-0 h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 flex items-center justify-center group/inserter cursor-pointer z-10 w-4/5 mx-auto';
             this.botInserter.style.top = 'calc(100% + 6px)';
             this.botInserter.style.transform = 'translateY(-50%)';
@@ -213,7 +209,6 @@ class BaseNotebookCell extends HTMLElement {
                 </div>
             `;
             this.botInserter.onclick = () => this.dispatchAction('cell-insert-below');
-            // NOTE: botInserter is appended to the wrapper later in code-cells after output to preserve order!
             if (this.cellType !== 'code') this.appendChild(this.botInserter);
         }
     }
@@ -248,12 +243,10 @@ class BaseNotebookCell extends HTMLElement {
 }
 window.BaseNotebookCell = BaseNotebookCell;
 
-// --- STREAMING_CHUNK:Configuring Core Notebook Engine & Flat Sync... ---
 class NotebookCore {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
         
-        // Centralize all default configurations here
         const defaultConfig = {
             isReadOnly: false,
             defaultCellType: 'code',
@@ -270,7 +263,7 @@ class NotebookCore {
         
         this.isReadOnly = this.options.isReadOnly;
         this.defaultCellType = this.options.defaultCellType;
-        // Centralized Top Inserter Configuration
+
         const topInserter = document.getElementById('top-inserter');
         if (topInserter) {
             if (this.isReadOnly || this.options.disableInsertAll || this.options.disableInsertTop) {
@@ -292,6 +285,24 @@ class NotebookCore {
         });
     }
 
+    // --- NEW: Reset Kernel Logic ---
+    async restartKernel() {
+        if (!this.kernel) return;
+        
+        // Temporarily block UI
+        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
+        this.updateKernelStatus('loading');
+        
+        try {
+            // Nullify old kernel instance to force a fresh WebAssembly load
+            this.kernel = new PyodideKernel();
+            await this.kernel.init((status) => this.updateKernelStatus(status));
+        } catch (err) {
+            console.error("Kernel failed to restart:", err);
+            this.updateKernelStatus('error');
+        }
+    }
+
     setupEventListeners() {
         this.container.addEventListener('cell-content-changed', () => this.syncToServer());
         this.container.addEventListener('cell-height-changed', () => {
@@ -307,7 +318,7 @@ class NotebookCore {
         });
 
         this.container.addEventListener('cell-insert-below', (e) => {
-            if (this.isReadOnly) return;
+            if (this.isReadOnly || this.options.disableInsertAll) return;
             const el = e.target;
             const newCell = this.createCellElement({ type: 'code', content: '' });
             el.insertAdjacentElement('afterend', newCell);
@@ -333,6 +344,7 @@ class NotebookCore {
 
     updateKernelStatus(status) {
         const el = document.getElementById('kernel-status');
+        if (!el) return;
         if (status === 'loading') el.innerHTML = `Loading Kernel... <span class="w-3 h-3 ml-1 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin inline-block"></span>`;
         else if (status === 'loading-packages') el.innerHTML = `Loading Packages...`;
         else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready`;
@@ -363,7 +375,7 @@ class NotebookCore {
     }
 
     addCell(type = 'code', index = 0) {
-        if (this.isReadOnly) return;
+        if (this.isReadOnly || this.options.disableInsertAll) return;
         const newCell = this.createCellElement({ type: type, content: '', isEditing: type === 'markdown' });
         
         if (this.container.children.length === 0 || index >= this.container.children.length) {
@@ -391,7 +403,7 @@ class NotebookCore {
         this.sortable = new Sortable(this.container, {
             handle: '.drag-handle',
             animation: 150,
-            filter: '[is-locked]', // Prevent locked items from being dragged
+            filter: '[is-locked]', 
             onEnd: () => {
                 const cells = Array.from(this.container.children);
                 cells.forEach(cell => { if(cell.refresh) cell.refresh(); }); 
@@ -400,7 +412,6 @@ class NotebookCore {
         });
     }
 
-    // --- FLAT FILE PARSERS ---
     serializeToFlat() {
         let out = '';
         Array.from(this.container.children).forEach(cell => {
@@ -424,10 +435,8 @@ class NotebookCore {
         }
         
         const cells = [];
-        // Regex extracts type (e.g., code) and optional metadata {...} block
         const chunks = payload.split(/# %%\s*\[(?<type>[a-zA-Z]+)\]\s*(?<meta>{.*?})?\s*\n/g);
         
-        // chunks layout: [0] before, [1] type, [2] meta, [3] block body, [4] next type...
         for (let i = 1; i < chunks.length; i += 3) {
             const type = chunks[i];
             const metaStr = chunks[i+1];
@@ -445,7 +454,7 @@ class NotebookCore {
             if (type === 'markdown' || type === 'text') {
                 content = content.replace(/^"""\n?/, '').replace(/\n?"""\s*$/, '');
             }
-            content = content.replace(/\n+$/, ''); // trim trailing empty lines
+            content = content.replace(/\n+$/, ''); 
             
             cells.push({ type, content, isLocked, isEditing: false });
         }
@@ -457,37 +466,8 @@ class NotebookCore {
 
     syncToServer() {
         if (typeof window.triggerHostSync === 'function') {
-            // Send exactly the flat format required by Moodle / templates
             window.triggerHostSync(this.serializeToFlat());
         }
-    }
-
-    exportMD() {
-        const flatText = this.serializeToFlat();
-        const blob = new Blob([flatText], { type: 'text/markdown' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'notebook.md';
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    importMD(event) {
-        if (this.isReadOnly) return;
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const rawCells = this.deserializeFromFlat(e.target.result);
-            if (rawCells.length > 0) {
-                this.loadData(rawCells);
-                this.syncToServer();
-            }
-            event.target.value = ''; 
-        };
-        reader.readAsText(file);
     }
 }
 window.NotebookCore = NotebookCore;

@@ -73,7 +73,7 @@ class CodeCellElement extends window.BaseNotebookCell {
                     if (update.docChanged || update.geometryChanged) {
                         if (update.docChanged) {
                             this.setButtonState('default');
-                            const config = window.NOTEBOOK_CONFIG || {};
+                            const config = (window.notebookCore && window.notebookCore.options) || {};
                             if (config.autoClearOutputOnEdit && this.output) {
                                 this.clearOutput();
                             }
@@ -205,8 +205,7 @@ class CodeCellElement extends window.BaseNotebookCell {
     applyHysteresis() {
         if (!this.outputContent) return;
         
-        const config = window.NOTEBOOK_CONFIG || { outputCurtailThresholdLines: 40, outputCurtailShowLines: 10, outputLineHeightPx: 21 };
-        const textLines = (this.outputContent.innerText.match(/\n/g) || []).length + 1;
+        const config = (window.notebookCore && window.notebookCore.options) || { outputCurtailThresholdLines: 40, outputCurtailShowLines: 10, outputLineHeightPx: 21 };        const textLines = (this.outputContent.innerText.match(/\n/g) || []).length + 1;
         const shouldCurtail = textLines > config.outputCurtailThresholdLines;
 
         if (shouldCurtail) {

@@ -2,7 +2,8 @@ window.NOTEBOOK_CONFIG = {
     outputCurtailThresholdLines: 40,
     outputCurtailShowLines: 10,
     outputLineHeightPx: 21,
-    autoClearOutputOnEdit: true
+    autoClearOutputOnEdit: true,
+    mdUseButtonHoverOnly: false // Set to true to hide the "Use" button until mouseover
 };
 
 const MathJaxHelper = {
@@ -59,12 +60,9 @@ plt.show = _custom_show
             
             this.isReady = true;
             statusCallback('ready');
-            
-            window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
         } catch (err) {
             statusCallback('error');
             console.error("Kernel Boot Error:", err);
-            window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
         }
     }
 
@@ -107,7 +105,6 @@ plt.show = _custom_show
     }
 }
 
-// --- STREAMING_CHUNK:Configuring Base Notebook Cell Architecture... ---
 class BaseNotebookCell extends HTMLElement {
     constructor() {
         super();
@@ -122,7 +119,10 @@ class BaseNotebookCell extends HTMLElement {
         
         this.cellId = this.getAttribute('cell-id') || Math.random().toString(36).substring(2, 9);
         this.cellType = this.getAttribute('cell-type') || 'text';
-        this.isLocked = this.hasAttribute('is-locked'); // Enforces strict read-only/no-delete
+        this.isReadOnly = this.hasAttribute('is-readonly');
+        this.isLocked = this.hasAttribute('is-locked') || this.isReadOnly; 
+        this.disableTypeChange = this.hasAttribute('disable-type-change');
+        this.hideCellToolbar = this.hasAttribute('hide-cell-toolbar');
         this.content = this.getAttribute('content') || '';
 
         this.renderShell();
@@ -137,6 +137,7 @@ class BaseNotebookCell extends HTMLElement {
 
     disconnectedCallback() {
         if (this.resizeObserver) this.resizeObserver.disconnect();
+        if (this._kernelStatusHandler) window.removeEventListener('kernel-status-changed', this._kernelStatusHandler);
     }
 
     dispatchAction(eventName, detail = {}) {
@@ -144,19 +145,13 @@ class BaseNotebookCell extends HTMLElement {
     }
 
     renderShell() {
-        // Tightened vertical margin (my-1.5 matches the 12px inserter gap perfectly)
         this.className = 'cell-wrapper relative flex flex-col w-full my-1.5 group/wrapper block box-border';
 
         this.mainBox = document.createElement('div');
         this.mainBox.className = 'cell-container group/cell relative bg-white border border-slate-200 rounded-md shadow-sm flex items-stretch transition-all hover:border-slate-300 min-h-[1.75rem] box-border';
-        
-        if (this.isLocked || (window.notebookCore && window.notebookCore.isReadOnly)) {
-            this.mainBox.classList.add('bg-slate-50');
-        }
+        if (this.isLocked) this.mainBox.classList.add('bg-slate-50', 'border-slate-300');
 
-        const isReadOnlyGlobal = window.notebookCore && window.notebookCore.isReadOnly;
-
-        if (!this.isLocked && !isReadOnlyGlobal) {
+        if (!this.isLocked) {
             const dragHandle = document.createElement('div');
             dragHandle.className = 'drag-handle absolute left-0 top-0 bottom-0 w-1 bg-transparent hover:bg-blue-600 group-hover/cell:bg-blue-400 cursor-grab z-30 rounded-l-md opacity-0 group-hover/cell:opacity-100 transition-all';
             this.mainBox.appendChild(dragHandle);
@@ -165,33 +160,47 @@ class BaseNotebookCell extends HTMLElement {
         this.contentArea = document.createElement('div');
         this.contentArea.className = 'flex-1 relative flex flex-col min-w-0 p-0 box-border min-h-0';
         
-        // Locked cells suppress the top toolbar entirely (no type change, no delete)
-        if (!this.isLocked && !isReadOnlyGlobal) {
+        if (!this.isReadOnly && !this.hideCellToolbar) {
             const toolbar = document.createElement('div');
             toolbar.className = 'cell-toolbar absolute z-40 flex items-center gap-1 bg-white/95 backdrop-blur-sm shadow-sm border border-slate-200 rounded-md px-1.5 py-0.5 opacity-0 group-hover/cell:opacity-100 transition-all text-xs';
 
-            const dropdownWrap = document.createElement('div');
-            dropdownWrap.className = 'relative flex items-center justify-center rounded hover:bg-slate-100 transition-colors text-slate-500 font-medium px-1 cursor-pointer';
-            dropdownWrap.innerHTML = `
-                <span>${this.cellType}</span>
-                <svg class="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                <select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Change Cell Type">
-                    <option value="code" ${this.cellType === 'code' ? 'selected' : ''}>code</option>
-                    <option value="markdown" ${this.cellType === 'markdown' ? 'selected' : ''}>markdown</option>
-                    <option value="text" ${this.cellType === 'text' ? 'selected' : ''}>text</option>
-                </select>
-            `;
-            dropdownWrap.querySelector('select').addEventListener('change', (e) => {
-                this.dispatchAction('cell-type-changed', { newType: e.target.value, content: this.content });
-            });
-            toolbar.appendChild(dropdownWrap);
+            if (this.isLocked) {
+                const badge = document.createElement('span');
+                badge.className = 'text-slate-400 font-medium px-1 cursor-default pointer-events-none uppercase tracking-wider text-[10px]';
+                badge.innerText = this.cellType;
+                badge.title = 'This cell is locked by the instructor';
+                toolbar.appendChild(badge);
+            } else {
+                if (!this.disableTypeChange) {
+                    const dropdownWrap = document.createElement('div');
+                    dropdownWrap.className = 'relative flex items-center justify-center rounded hover:bg-slate-100 transition-colors text-slate-500 font-medium px-1 cursor-pointer';
+                    dropdownWrap.innerHTML = `
+                        <span>${this.cellType}</span>
+                        <svg class="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        <select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Change Cell Type">
+                            <option value="code" ${this.cellType === 'code' ? 'selected' : ''}>code</option>
+                            <option value="markdown" ${this.cellType === 'markdown' ? 'selected' : ''}>markdown</option>
+                            <option value="text" ${this.cellType === 'text' ? 'selected' : ''}>text</option>
+                        </select>
+                    `;
+                    dropdownWrap.querySelector('select').addEventListener('change', (e) => {
+                        this.dispatchAction('cell-type-changed', { newType: e.target.value, content: this.content });
+                    });
+                    toolbar.appendChild(dropdownWrap);
+                } else {
+                    const badge = document.createElement('span');
+                    badge.className = 'text-slate-500 font-medium px-1 cursor-default pointer-events-none uppercase tracking-wider text-[10px]';
+                    badge.innerText = this.cellType;
+                    toolbar.appendChild(badge);
+                }
 
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 border-l border-slate-200 pl-1';
-            deleteBtn.title = 'delete cell';
-            deleteBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
-            deleteBtn.onclick = () => this.dispatchAction('cell-deleted');
-            toolbar.appendChild(deleteBtn);
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 border-l border-slate-200 pl-1';
+                deleteBtn.title = 'delete cell';
+                deleteBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
+                deleteBtn.onclick = () => this.dispatchAction('cell-deleted');
+                toolbar.appendChild(deleteBtn);
+            }
 
             this.contentArea.appendChild(toolbar);
         }
@@ -203,24 +212,24 @@ class BaseNotebookCell extends HTMLElement {
 
         this.mainBox.appendChild(this.contentArea);
         this.appendChild(this.mainBox);
+        
+        const globalConfig = window.notebookCore ? window.notebookCore.options : {};
 
-        // Append Inserter LAST so it stays below any output appended later
-        if (!isReadOnlyGlobal) {
-            this.botInserter = document.createElement('div');
-            // Delayed expansion CSS, perfectly anchored to the center of the 12px vertical margin
-            this.botInserter.className = 'absolute left-0 right-0 h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 flex items-center justify-center group/inserter cursor-pointer z-10 w-4/5 mx-auto';
-            this.botInserter.style.top = 'calc(100% + 6px)';
-            this.botInserter.style.transform = 'translateY(-50%)';
-            this.botInserter.title = `Add cell below`;
-            this.botInserter.innerHTML = `
-                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors"></div></div>
-                <div class="relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white shadow-sm opacity-0 group-hover/inserter:opacity-100 transition-opacity duration-300 delay-0 group-hover/inserter:delay-250 mx-auto border-2 border-white">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
+        if (!this.isReadOnly && !globalConfig.disableInsertAll) {
+            const botInserter = document.createElement('div');
+            botInserter.className = 'bot-inserter absolute left-0 right-0 h-3 flex items-center justify-center group/inserter cursor-pointer w-4/5 mx-auto z-10 transition-all duration-300 hover:h-6';
+            botInserter.style.top = 'calc(100% + 6px)';
+            botInserter.style.transform = 'translateY(-50%)';
+            botInserter.title = `Add cell below`;
+            botInserter.innerHTML = `
+                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors duration-150"></div></div>
+                <div class="relative z-10 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white shadow-md opacity-0 group-hover/inserter:opacity-100 transition-all duration-300 mx-auto w-6 h-6 rounded-full scale-50 group-hover/inserter:scale-100 delay-100">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
                 </div>
             `;
-            this.botInserter.onclick = () => this.dispatchAction('cell-insert-below');
-            // NOTE: botInserter is appended to the wrapper later in code-cells after output to preserve order!
-            if (this.cellType !== 'code') this.appendChild(this.botInserter);
+            botInserter.onclick = () => this.dispatchAction('cell-insert-below');
+            this.botInserter = botInserter;
+            this.appendChild(botInserter);
         }
     }
 
@@ -229,7 +238,7 @@ class BaseNotebookCell extends HTMLElement {
     refresh() { /* abstract */ }
 
     updateActionButton(config) {
-        if (this.actionBtnElement && config) {
+        if (this.actionBtnElement && config && !this.isReadOnly) {
             this.actionBtnElement.classList.remove('hidden');
             this.actionBtnElement.title = config.title;
             this.actionBtnElement.innerHTML = config.icon;
@@ -249,17 +258,28 @@ class BaseNotebookCell extends HTMLElement {
     }
 
     toJSON() { 
-        return { id: this.cellId, type: this.cellType, content: this.content, isLocked: this.isLocked }; 
+        return { id: this.cellId, type: this.cellType, content: this.content, locked: this.isLocked }; 
     }
 }
 window.BaseNotebookCell = BaseNotebookCell;
 
-// --- STREAMING_CHUNK:Configuring Core Notebook Engine & Flat Sync... ---
 class NotebookCore {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
+        this.options = options;
         this.isReadOnly = options.isReadOnly || false;
-        this.activeCodeEditor = null; // Tracks cursor for smart Markdown injection
+        this.defaultCellType = options.defaultCellType || 'code';
+
+        // Centralized Top Inserter Configuration
+        const topInserter = document.getElementById('top-inserter');
+        if (topInserter) {
+            if (this.isReadOnly || this.options.disableInsertAll || this.options.disableInsertTop) {
+                topInserter.style.display = 'none';
+            } else {
+                topInserter.style.display = 'flex';
+                topInserter.onclick = () => this.addCell(this.defaultCellType, 0);
+            }
+        }
         
         this.kernel = new PyodideKernel();
         this.kernel.init((status) => this.updateKernelStatus(status));
@@ -287,9 +307,9 @@ class NotebookCore {
         });
 
         this.container.addEventListener('cell-insert-below', (e) => {
-            if (this.isReadOnly) return;
+            if (this.isReadOnly || this.options.disableInsertAll) return;
             const el = e.target;
-            const newCell = this.createCellElement({ type: 'code', content: '' });
+            const newCell = this.createCellElement({ type: this.defaultCellType, content: '' });
             el.insertAdjacentElement('afterend', newCell);
             this.syncToServer();
             setTimeout(() => newCell.focusCell(), 50);
@@ -298,8 +318,8 @@ class NotebookCore {
         this.container.addEventListener('cell-type-changed', (e) => {
             if (this.isReadOnly) return;
             const oldEl = e.target;
-            if (oldEl.isLocked) return;
-
+            if (oldEl.isLocked) return; 
+            
             const newType = e.detail.newType;
             const content = e.detail.content;
             
@@ -313,10 +333,17 @@ class NotebookCore {
 
     updateKernelStatus(status) {
         const el = document.getElementById('kernel-status');
+        const runBtn = document.getElementById('run-all-btn');
+        const isReady = (status === 'ready');
+        
         if (status === 'loading') el.innerHTML = `Loading Kernel... <span class="w-3 h-3 ml-1 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin inline-block"></span>`;
         else if (status === 'loading-packages') el.innerHTML = `Loading Packages...`;
         else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready`;
         else el.innerHTML = `<span class="h-2 w-2 rounded-full bg-red-500 inline-block mr-1"></span> Error`;
+
+        if (runBtn) runBtn.disabled = !isReady;
+        
+        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady } }));
     }
 
     loadData(cellDataArray) {
@@ -328,22 +355,30 @@ class NotebookCore {
     }
 
     createCellElement(data) {
+        const isTextual = data.type === 'markdown' || data.type === 'text';
+        const shouldLock = data.locked || (this.options.lockAllMarkdown && isTextual);
+
         let tagName = 'notebook-text-cell';
         if (data.type === 'markdown') tagName = 'notebook-markdown-cell';
         if (data.type === 'code') tagName = 'notebook-code-cell';
 
         const cell = document.createElement(tagName);
         cell.setAttribute('cell-id', data.id || Math.random().toString(36).substring(2, 9));
-        cell.setAttribute('cell-type', data.type || 'text');
+        cell.setAttribute('cell-type', data.type || this.defaultCellType);
         cell.setAttribute('content', data.content || '');
         if (data.output) cell.setAttribute('output', data.output);
         if (data.isEditing) cell.setAttribute('is-editing', '');
-        if (data.isLocked) cell.setAttribute('is-locked', '');
+        if (this.isReadOnly) cell.setAttribute('is-readonly', '');
+        if (shouldLock) cell.setAttribute('is-locked', '');
+        
+        if (this.options.disableTypeChange) cell.setAttribute('disable-type-change', '');
+        if (this.options.hideCellToolbar) cell.setAttribute('hide-cell-toolbar', '');
+
         return cell;
     }
 
-    addCell(type = 'code', index = 0) {
-        if (this.isReadOnly) return;
+    addCell(type = this.defaultCellType, index = 0) {
+        if (this.isReadOnly || this.options.disableInsertAll) return;
         const newCell = this.createCellElement({ type: type, content: '', isEditing: type === 'markdown' });
         
         if (this.container.children.length === 0 || index >= this.container.children.length) {
@@ -371,7 +406,7 @@ class NotebookCore {
         this.sortable = new Sortable(this.container, {
             handle: '.drag-handle',
             animation: 150,
-            filter: '[is-locked]', // Prevent locked items from being dragged
+            filter: '[is-locked]', 
             onEnd: () => {
                 const cells = Array.from(this.container.children);
                 cells.forEach(cell => { if(cell.refresh) cell.refresh(); }); 
@@ -380,75 +415,24 @@ class NotebookCore {
         });
     }
 
-    // --- FLAT FILE PARSERS ---
-    serializeToFlat() {
-        let out = '';
-        Array.from(this.container.children).forEach(cell => {
-            const data = cell.toJSON();
-            const type = data.type;
-            const meta = data.isLocked ? ` {"locked": true}` : '';
-            
-            if (type === 'code') {
-                const langMeta = data.isLocked ? ` {"locked": true, "lang": "python"}` : ` {"lang": "python"}`;
-                out += `# %% [code]${langMeta}\n${data.content}\n\n`;
-            } else {
-                out += `# %% [${type}]${meta}\n"""\n${data.content}\n"""\n\n`;
-            }
-        });
-        return out.trim();
+    toJSON() { 
+        return Array.from(this.container.children).map(c => c.toJSON()); 
     }
-
-    deserializeFromFlat(payload) {
-        if (!payload || !payload.includes('# %%')) {
-            return [{ type: 'code', content: payload || '' }];
-        }
-        
-        const cells = [];
-        // Regex extracts type (e.g., code) and optional metadata {...} block
-        const chunks = payload.split(/# %%\s*\[(?<type>[a-zA-Z]+)\]\s*(?<meta>{.*?})?\s*\n/g);
-        
-        // chunks layout: [0] before, [1] type, [2] meta, [3] block body, [4] next type...
-        for (let i = 1; i < chunks.length; i += 3) {
-            const type = chunks[i];
-            const metaStr = chunks[i+1];
-            let content = chunks[i+2] || '';
-            
-            let isLocked = false;
-            if (metaStr) {
-                try {
-                    const metaObj = JSON.parse(metaStr.replace(/'/g, '"'));
-                    if (metaObj.locked) isLocked = true;
-                } catch(e) { console.warn("Failed to parse metadata", metaStr); }
-            }
-            
-            content = content.replace(/\r\n/g, '\n');
-            if (type === 'markdown' || type === 'text') {
-                content = content.replace(/^"""\n?/, '').replace(/\n?"""\s*$/, '');
-            }
-            content = content.replace(/\n+$/, ''); // trim trailing empty lines
-            
-            cells.push({ type, content, isLocked, isEditing: false });
-        }
-        
-        return cells.length ? cells : [{ type: 'code', content: payload }];
-    }
-
-    toJSON() { return Array.from(this.container.children).map(c => c.toJSON()); }
 
     syncToServer() {
         if (typeof window.triggerHostSync === 'function') {
-            // Send exactly the flat format required by Moodle / templates
-            window.triggerHostSync(this.serializeToFlat());
+            const flatText = NotebookCore.serializeToFlat(this.toJSON());
+            window.triggerHostSync(flatText);
         }
     }
 
     exportMD() {
-        const flatText = this.serializeToFlat();
-        const blob = new Blob([flatText], { type: 'text/markdown' });
+        const flatText = NotebookCore.serializeToFlat(this.toJSON());
+        const blob = new Blob([flatText], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'notebook.md';
+        a.download = 'notebook.py';
         a.click();
         URL.revokeObjectURL(url);
     }
@@ -460,14 +444,80 @@ class NotebookCore {
         
         const reader = new FileReader();
         reader.onload = (e) => {
-            const rawCells = this.deserializeFromFlat(e.target.result);
-            if (rawCells.length > 0) {
-                this.loadData(rawCells);
+            const cells = NotebookCore.deserializeFromFlat(e.target.result);
+            if (cells.length > 0) {
+                this.loadData(cells);
                 this.syncToServer();
             }
             event.target.value = ''; 
         };
         reader.readAsText(file);
+    }
+
+    static serializeToFlat(cells) {
+        return cells.map(cell => {
+            const meta = {};
+            if (cell.locked) meta.locked = true;
+            if (cell.type === 'code') meta.lang = 'python';
+            
+            const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+            const header = `# %% [${cell.type}]${metaStr}`;
+            
+            let content = cell.content;
+            if (cell.type === 'markdown' || cell.type === 'text') {
+                content = `"""\n${content}\n"""`;
+            }
+            return `${header}\n${content}`;
+        }).join('\n\n');
+    }
+
+    static deserializeFromFlat(text) {
+        if (!text || !text.includes('# %%')) {
+            return [{ type: 'code', content: (text||'').trim(), isEditing: false, output: '' }];
+        }
+
+        const cells = [];
+        const blocks = text.split(/(?=# %%\s*\[)/);
+        
+        for (let block of blocks) {
+            if (!block.trim()) continue;
+            
+            const m = block.match(/^\s*# %%\s*\[([^\]]+)\](?:[ \t]*(\{.*?\}))?[ \t]*\r?\n([\s\S]*)$/);
+            if (m) {
+                let type = m[1].toLowerCase().trim();
+                if (type === 'python') type = 'code';
+                if (type === 'plain') type = 'text';
+
+                let meta = {};
+                if (m[2]) {
+                    try { meta = JSON.parse(m[2].replace(/'/g, '"')); } catch(e) {}
+                }
+
+                let content = m[3].replace(/\r?\n$/, '');
+                if (type === 'markdown' || type === 'text') {
+                    const tqMatch = content.match(/^\s*"""\r?\n?([\s\S]*?)\r?\n?"""\s*$/);
+                    if (tqMatch) {
+                        content = tqMatch[1];
+                    }
+                }
+
+                cells.push({
+                    type: type,
+                    content: content,
+                    locked: meta.locked || false,
+                    isEditing: false,
+                    output: ''
+                });
+            } else {
+                cells.push({
+                    type: 'code',
+                    content: block.trim(),
+                    isEditing: false,
+                    output: ''
+                });
+            }
+        }
+        return cells;
     }
 }
 window.NotebookCore = NotebookCore;

@@ -14,22 +14,21 @@ class PyodideWorkerKernel {
     constructor(maxOutputChars = 50000, options = {}) {
         this.isReady = false;
         this.worker = null;
-        this.callbacks = {}; // Maps message IDs to Promise resolve/reject
-        this.targetDivs = {}; // Maps message IDs to target output divs
+        this.callbacks = {}; 
+        this.targetDivs = {}; 
         
         this.maxOutputChars = maxOutputChars;
         this.currentOutputCounts = {};
         
-        // Settings for routing and performance
-        this.kernelMode = options.kernelMode || 'local'; // 'local' or 'host'
-        this.preloadMatplotlib = options.preloadMatplotlib !== false; // default true
+        this.options = options;
+        this.kernelMode = options.kernelMode || 'local'; 
+        this.preloadMatplotlib = options.preloadMatplotlib !== false; 
     }
 
     init(statusCallback) {
         this.statusCallback = statusCallback;
         const initId = this.generateId();
         
-        // We set up a Promise manually for the INIT step to await it if needed
         new Promise((resolve, reject) => {
             this.callbacks[initId] = { resolve, reject };
         });
@@ -54,13 +53,11 @@ class PyodideWorkerKernel {
         this.worker.postMessage({ 
             id: initId, 
             action: 'INIT', 
-            config: { preloadMatplotlib: this.preloadMatplotlib } 
+            config: this.options 
         });
     }
 
-    generateId() {
-        return Math.random().toString(36).substring(2, 10);
-    }
+    generateId() { return Math.random().toString(36).substring(2, 10); }
 
     writeOutput(id, text, classes) {
         const targetDiv = this.targetDivs[id];
@@ -68,7 +65,6 @@ class PyodideWorkerKernel {
         
         this.currentOutputCounts[id] = (this.currentOutputCounts[id] || 0) + text.length;
         if (this.currentOutputCounts[id] > this.maxOutputChars) {
-            // Append the error once, then ignore further output for this ID
             if (this.currentOutputCounts[id] - text.length <= this.maxOutputChars) {
                 const span = document.createElement('span');
                 span.className = 'text-red-500 font-bold block mt-2';
@@ -99,7 +95,6 @@ class PyodideWorkerKernel {
     handleMessage(msg) {
         const { id, type, status, text, error, data } = msg;
 
-        // Route status updates back to the UI header
         if (type === 'status') {
             if (status === 'ready') {
                 this.isReady = true;
@@ -118,7 +113,6 @@ class PyodideWorkerKernel {
             return;
         }
 
-        // Route outputs to the correct active cell
         if (type === 'stdout') this.writeOutput(id, text, 'text-slate-700');
         if (type === 'stderr') this.writeOutput(id, text, 'text-red-500 font-semibold');
         if (type === 'svg') this.injectSvg(id, data);
@@ -133,7 +127,6 @@ class PyodideWorkerKernel {
             }
         }
 
-        // Execution Completion Handling
         if (type === 'success' || type === 'error') {
             if (this.callbacks[id]) {
                 if (type === 'error') this.callbacks[id].reject(error);
@@ -161,7 +154,7 @@ class PyodideWorkerKernel {
                 id: execId,
                 action: 'EXECUTE',
                 code: code,
-                config: { preloadMatplotlib: this.preloadMatplotlib }
+                config: this.options
             });
         });
     }
@@ -220,12 +213,12 @@ class SkulptKernel {
         this.currentOutputCount += text.length;
         if (this.currentOutputCount > this.maxOutputChars) {
             this.isKilled = true;
-            throw new Error(`Output limit exceeded`); // Caught by Skulpt
+            throw new Error(`Output limit exceeded`);
         }
         
         const span = document.createElement('span');
         span.className = classes;
-        span.innerText = text; // Skulpt provides precise string chunks without forced newlines
+        span.innerText = text; 
         this.currentOutputDiv.appendChild(span);
     }
 
@@ -242,7 +235,7 @@ class SkulptKernel {
                 return Sk.builtinFiles["files"][x];
             },
             __future__: Sk.python3,
-            execLimit: 5000, // Built-in 5 second timeout for infinite loops
+            execLimit: 5000, 
             yieldLimit: 100,
             timeoutMsg: () => "Execution stopped: Time limit (5s) exceeded. Do you have an infinite loop?"
         });
@@ -253,7 +246,6 @@ class SkulptKernel {
             if (this.isKilled) {
                 throw new Error(`Execution stopped: Output exceeded maximum limit of ${this.maxOutputChars} characters.`);
             }
-            // Strip Skulpt's internal trace jargon for cleaner output
             throw new Error(err.toString().replace(/<stdin>/g, "line"));
         } finally {
             this.currentOutputDiv = null;
@@ -355,7 +347,6 @@ class BaseNotebookCell extends HTMLElement {
         this.mainBox.appendChild(this.contentArea);
         this.appendChild(this.mainBox);
 
-        // Append Inserter LAST so it stays below any output appended later
         const disableInsert = window.notebookCore && window.notebookCore.options && window.notebookCore.options.disableInsertAll;
         if (!isReadOnlyGlobal && !disableInsert) {
             this.botInserter = document.createElement('div');
@@ -408,14 +399,16 @@ class NotebookCore {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
         
-        // Centralize all default configurations here
+        // Config injected from Moodle iframe widget config or standalone HTML script
         const defaultConfig = {
             isReadOnly: false,
             defaultCellType: 'code',
-            kernelType: 'pyodide', // Choose 'pyodide' or 'skulpt'
-            kernelMode: 'local',   // Choose 'local' (worker) or 'host' (moodle singleton)
-            preloadMatplotlib: true, // Loads heavy packages during boot
+            kernelType: 'pyodide', 
+            kernelMode: 'local',   
+            preloadMatplotlib: true,
             maxOutputChars: 50000, 
+            enableTracing: true,       // New: Toggle tracer loop protection
+            maxRuntime: 15.0,          // New: Configurable loop timeout
             disableInsertAll: false,
             disableInsertTop: false,
             outputCurtailThresholdLines: 40,
@@ -443,11 +436,8 @@ class NotebookCore {
         if (this.options.kernelType === 'skulpt') {
             this.kernel = new SkulptKernel(this.options.maxOutputChars);
         } else {
-            // Instantiate the Worker Kernel instead!
-            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, {
-                kernelMode: this.options.kernelMode,
-                preloadMatplotlib: this.options.preloadMatplotlib
-            });
+            // Pass entire options block down so the Worker config gets enableTracing/maxRuntime
+            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, this.options);
         }
         
         this.kernel.init((status) => this.updateKernelStatus(status));
@@ -520,7 +510,8 @@ class NotebookCore {
             }
         });
 
-        // Hard terminate the current worker if it exists (fixes unrecoverable freezes)
+        // Hard terminate the current worker if it exists. 
+        // This causes Pyodide state to be completely wiped.
         if (this.kernel && typeof this.kernel.destroy === 'function') {
             this.kernel.destroy();
         }
@@ -528,10 +519,7 @@ class NotebookCore {
         if (this.options.kernelType === 'skulpt') {
             this.kernel = new SkulptKernel(this.options.maxOutputChars);
         } else {
-            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, {
-                kernelMode: this.options.kernelMode,
-                preloadMatplotlib: this.options.preloadMatplotlib
-            });
+            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, this.options);
         }
         await this.kernel.init((status) => this.updateKernelStatus(status));
     }

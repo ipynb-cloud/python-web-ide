@@ -11,10 +11,13 @@ const MathJaxHelper = {
 };
 
 class PyodideKernel {
-    constructor() {
+    constructor(maxOutputChars = 50000) {
         this.isReady = false;
         this.pyodide = null;
         this.currentOutputDiv = null;
+        this.maxOutputChars = maxOutputChars;
+        this.currentOutputCount = 0;
+        this.outputLimitExceeded = false;
     }
 
     async init(statusCallback) {
@@ -62,7 +65,18 @@ plt.show = _custom_show
     }
 
     writeOutput(text, classes) {
-        if (!this.currentOutputDiv) return;
+        if (!this.currentOutputDiv || this.outputLimitExceeded) return;
+        
+        this.currentOutputCount += text.length;
+        if (this.currentOutputCount > this.maxOutputChars) {
+            this.outputLimitExceeded = true;
+            const span = document.createElement('span');
+            span.className = 'text-red-500 font-bold block mt-2';
+            span.innerText = `[Error: Output exceeded maximum limit of ${this.maxOutputChars} characters]`;
+            this.currentOutputDiv.appendChild(span);
+            return;
+        }
+
         const span = document.createElement('span');
         span.className = classes;
         span.innerText = text + "\n";
@@ -81,19 +95,27 @@ plt.show = _custom_show
 
     async execute(code, targetDiv) {
         this.currentOutputDiv = targetDiv;
+        this.currentOutputCount = 0;
+        this.outputLimitExceeded = false;
+
         await this.pyodide.loadPackagesFromImports(code);
         
-        // --- TIMEOUT HACK FOR INFINITE LOOPS ---
-        // Inject a Python tracer that checks the clock on every line executed.
+        // --- TIMEOUT & OUTPUT LIMIT HACK ---
         await this.pyodide.runPythonAsync(`
 import sys
 import time
+import js
 _pynote_start_time = time.time()
 
 def _pynote_tracer(frame, event, arg):
-    if time.time() - _pynote_start_time > 5.0:  # 5 second limit
+    if time.time() - _pynote_start_time > 5.0:  
         sys.settrace(None)
         raise TimeoutError("Execution stopped: Time limit (5s) exceeded. Do you have an infinite loop?")
+    
+    if getattr(js.window.notebookCore.kernel, 'outputLimitExceeded', False):
+        sys.settrace(None)
+        raise RuntimeError("Execution stopped: Output exceeded maximum limit. Do you have an infinite print loop?")
+        
     return _pynote_tracer
 
 sys.settrace(_pynote_tracer)
@@ -121,6 +143,92 @@ sys.settrace(_pynote_tracer)
             }
         }
         this.currentOutputDiv = null;
+    }
+}
+
+class SkulptKernel {
+    constructor(maxOutputChars = 50000) {
+        this.isReady = false;
+        this.currentOutputDiv = null;
+        this.maxOutputChars = maxOutputChars;
+        this.currentOutputCount = 0;
+        this.isKilled = false;
+    }
+
+    async init(statusCallback) {
+        statusCallback('loading');
+        
+        if (typeof Sk === 'undefined') {
+            statusCallback('loading-packages');
+            try {
+                await this.loadScript("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js");
+                await this.loadScript("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js");
+            } catch(e) {
+                statusCallback('error');
+                console.error("Failed to load Skulpt scripts");
+                return;
+            }
+        }
+        
+        this.isReady = true;
+        statusCallback('ready');
+        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
+    }
+
+    loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+
+    writeOutput(text, classes) {
+        if (!this.currentOutputDiv) return;
+        
+        this.currentOutputCount += text.length;
+        if (this.currentOutputCount > this.maxOutputChars) {
+            this.isKilled = true;
+            throw new Error(`Output limit exceeded`); // Caught by Skulpt
+        }
+        
+        const span = document.createElement('span');
+        span.className = classes;
+        span.innerText = text; // Skulpt provides precise string chunks without forced newlines
+        this.currentOutputDiv.appendChild(span);
+    }
+
+    async execute(code, targetDiv) {
+        this.currentOutputDiv = targetDiv;
+        this.currentOutputCount = 0;
+        this.isKilled = false;
+
+        Sk.configure({
+            output: (text) => this.writeOutput(text, 'text-slate-700'),
+            read: (x) => {
+                if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
+                    throw "File not found: '" + x + "'";
+                return Sk.builtinFiles["files"][x];
+            },
+            __future__: Sk.python3,
+            execLimit: 5000, // Built-in 5 second timeout for infinite loops
+            yieldLimit: 100,
+            timeoutMsg: () => "Execution stopped: Time limit (5s) exceeded. Do you have an infinite loop?"
+        });
+
+        try {
+            await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, code, true));
+        } catch (err) {
+            if (this.isKilled) {
+                throw new Error(`Execution stopped: Output exceeded maximum limit of ${this.maxOutputChars} characters.`);
+            }
+            // Strip Skulpt's internal trace jargon for cleaner output
+            throw new Error(err.toString().replace(/<stdin>/g, "line"));
+        } finally {
+            this.currentOutputDiv = null;
+        }
     }
 }
 
@@ -275,6 +383,8 @@ class NotebookCore {
         const defaultConfig = {
             isReadOnly: false,
             defaultCellType: 'code',
+            kernelType: 'pyodide', // Choose 'pyodide' or 'skulpt'
+            maxOutputChars: 50000, // Failsafe for infinite print loops
             disableInsertAll: false,
             disableInsertTop: false,
             outputCurtailThresholdLines: 40,
@@ -299,7 +409,12 @@ class NotebookCore {
             }
         }
         
-        this.kernel = new PyodideKernel();
+        if (this.options.kernelType === 'skulpt') {
+            this.kernel = new SkulptKernel(this.options.maxOutputChars);
+        } else {
+            this.kernel = new PyodideKernel(this.options.maxOutputChars);
+        }
+        
         this.kernel.init((status) => this.updateKernelStatus(status));
         
         this.setupEventListeners();
@@ -354,7 +469,7 @@ class NotebookCore {
         if (!el) return;
         if (status === 'loading') el.innerHTML = `Loading Kernel... <span class="w-3 h-3 ml-1 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin inline-block"></span>`;
         else if (status === 'loading-packages') el.innerHTML = `Loading Packages...`;
-        else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready`;
+        else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready <span class="ml-1 text-[9px] opacity-60">(${this.options.kernelType})</span>`;
         else el.innerHTML = `<span class="h-2 w-2 rounded-full bg-red-500 inline-block mr-1"></span> Error`;
     }
 
@@ -370,8 +485,11 @@ class NotebookCore {
             }
         });
 
-        // Initialize a completely new kernel instance
-        this.kernel = new PyodideKernel();
+        if (this.options.kernelType === 'skulpt') {
+            this.kernel = new SkulptKernel(this.options.maxOutputChars);
+        } else {
+            this.kernel = new PyodideKernel(this.options.maxOutputChars);
+        }
         await this.kernel.init((status) => this.updateKernelStatus(status));
     }
 

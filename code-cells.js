@@ -72,7 +72,7 @@ class CodeCellElement extends window.BaseNotebookCell {
                 ]));
             }
 
-            // Lock the code editor entirely if this cell is locked
+            // Lock the code editor entirely if this cell is locked 
             if (this.isLocked) {
                 const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
                 if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));

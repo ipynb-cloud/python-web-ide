@@ -3,6 +3,8 @@ importScripts("https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js");
 
 let pyodide = null;
 let currentExecId = null;
+let initPromise = null; // Prevents concurrent initializations in Singleton mode
+const namespaces = {};  // OPTION C: Stores isolated globals for each widget
 
 // Expose a JS function to Python for SVG matplotlib rendering
 self.sendSvg = function(svgStr) {
@@ -11,22 +13,28 @@ self.sendSvg = function(svgStr) {
 
 self.onmessage = async function(e) {
     const msg = e.data;
+    
+    // Fallback to 'default' if running locally without an ID
+    const widgetId = msg.widgetId || 'default'; 
 
     if (msg.action === 'INIT') {
         try {
             self.postMessage({ id: msg.id, type: 'status', status: 'loading' });
             
-            pyodide = await loadPyodide({
-                stdout: (text) => self.postMessage({ id: currentExecId, type: 'stdout', text }),
-                stderr: (text) => self.postMessage({ id: currentExecId, type: 'stderr', text })
-            });
+            // Initialization Latch: Ensure Pyodide only loads once even if 5 widgets ask for it
+            if (!initPromise) {
+                initPromise = (async () => {
+                    pyodide = await loadPyodide({
+                        stdout: (text) => self.postMessage({ id: currentExecId, type: 'stdout', text }),
+                        stderr: (text) => self.postMessage({ id: currentExecId, type: 'stderr', text })
+                    });
 
-            if (msg.config.preloadMatplotlib) {
-                self.postMessage({ id: msg.id, type: 'status', status: 'loading-packages' });
-                await pyodide.loadPackage(['matplotlib', 'numpy']);
-                
-                // Setup matplotlib headless SVG rendering
-                const setupCode = `
+                    if (msg.config.preloadMatplotlib) {
+                        self.postMessage({ id: msg.id, type: 'status', status: 'loading-packages' });
+                        await pyodide.loadPackage(['matplotlib', 'numpy']);
+                        
+                        // Setup matplotlib headless SVG rendering
+                        const setupCode = `
 import matplotlib
 matplotlib.use('svg')
 import matplotlib.pyplot as plt
@@ -50,9 +58,12 @@ def _custom_show():
 
 plt.show = _custom_show
 `;
-                await pyodide.runPythonAsync(setupCode);
+                        await pyodide.runPythonAsync(setupCode);
+                    }
+                })();
             }
             
+            await initPromise;
             self.postMessage({ id: msg.id, type: 'status', status: 'ready' });
         } catch (err) {
             self.postMessage({ id: msg.id, type: 'status', status: 'error', error: err.message });
@@ -61,17 +72,21 @@ plt.show = _custom_show
     else if (msg.action === 'EXECUTE') {
         currentExecId = msg.id;
         
+        // OPTION C: Create or retrieve a unique Python Dictionary for this specific widget
+        if (!namespaces[widgetId]) {
+            namespaces[widgetId] = pyodide.globals.get('dict')();
+        }
+        const widgetNamespace = namespaces[widgetId];
+        
         const enableTracing = msg.config.enableTracing !== false; // Default true
         const maxRuntime = msg.config.maxRuntime || 15.0; // Default 15s
 
         try {
-            // OPTIMIZATION 1: Only run the heavy AST parser if "import" is actually in the code
             if (msg.code.includes('import ')) {
                 await pyodide.loadPackagesFromImports(msg.code);
             }
             
             if (enableTracing) {
-                // OPTIMIZATION 2: Tick-based tracing to avoid WebAssembly boundary lag
                 await pyodide.runPythonAsync(`
 import sys
 import time
@@ -99,20 +114,21 @@ sys.settrace(_pynote_tracer)
                 `);
             }
 
-            let result = await pyodide.runPythonAsync(msg.code);
+            // Run the student's code strictly inside their isolated widget namespace
+            let result = await pyodide.runPythonAsync(msg.code, { globals: widgetNamespace });
             
             if (enableTracing) {
                 await pyodide.runPythonAsync(`sys.settrace(None)`); 
             }
             
-            // Flush any un-shown matplotlib plots
+            // Flush un-shown matplotlib plots in this namespace
             if (msg.config.preloadMatplotlib) {
-                try { await pyodide.runPythonAsync(`import matplotlib.pyplot as plt\nif plt.get_fignums(): plt.show()`); } catch(e) {}
+                try { await pyodide.runPythonAsync(`import matplotlib.pyplot as plt\nif plt.get_fignums(): plt.show()`, { globals: widgetNamespace }); } catch(e) {}
             }
 
             if (result !== undefined) {
-                pyodide.globals.set('_last_result', result);
-                const reprStr = pyodide.runPython('repr(_last_result)');
+                widgetNamespace.set('_last_result', result);
+                const reprStr = pyodide.runPython('repr(_last_result)', { globals: widgetNamespace });
                 if (reprStr !== 'None') {
                     self.postMessage({ id: currentExecId, type: 'result', text: reprStr });
                 }

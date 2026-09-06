@@ -11,6 +11,28 @@
         return hash.toString();
     }
 
+    // Python-style dedent to fix global indentation added by Moodle editors
+    function stripGlobalIndent(text) {
+        const lines = text.split('\n');
+        
+        // Strip leading/trailing purely empty lines
+        while(lines.length > 0 && lines[0].trim() === '') lines.shift();
+        while(lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+
+        let minIndent = Infinity;
+        for (const line of lines) {
+            if (line.trim().length > 0) {
+                const indent = line.match(/^\s*/)[0].length;
+                if (indent < minIndent) minIndent = indent;
+            }
+        }
+
+        if (minIndent !== Infinity && minIndent > 0) {
+            return lines.map(line => line.length >= minIndent ? line.substring(minIndent) : line).join('\n');
+        }
+        return lines.join('\n');
+    }
+
     function initWidget(mountPoint) {
         const que = mountPoint.closest('.que');
         if (!que) return;
@@ -26,28 +48,40 @@
         const isReadOnly = targetTextarea.hasAttribute('readonly') || targetTextarea.hasAttribute('disabled');
         const initialHeight = parseInt(mountPoint.style.height) || 380;
         
-        // --- NEW: Template Seeding Logic ---
+        // --- TEMPLATE SEEDING & DEDENT LOGIC ---
         let initialPayload = targetTextarea.value;
-        
-        // If the Moodle textarea is empty (first load), seed it with the template
         if (!initialPayload || initialPayload.trim() === '') {
-            const template = que.querySelector('template.widget-initial-state');
-            if (template) {
-                // Extract content and decode any HTML entities (e.g., &lt;) safely
-                const txt = document.createElement("textarea");
-                txt.innerHTML = template.innerHTML;
-                initialPayload = txt.value.trim();
+            // Support both <template> and <pre> as source containers
+            const sourceNode = que.querySelector('template.widget-initial-state, pre.widget-initial-state');
+            
+            if (sourceNode) {
+                let rawText = sourceNode.tagName.toLowerCase() === 'template' ? sourceNode.innerHTML : sourceNode.textContent;
                 
-                // Seed the Moodle textarea so this initial state is preserved on save
+                // Decode HTML entities
+                const txt = document.createElement("textarea");
+                txt.innerHTML = rawText;
+                
+                initialPayload = stripGlobalIndent(txt.value);
+                
+                // Seed the textarea
                 targetTextarea.value = initialPayload;
                 targetTextarea.dispatchEvent(new Event('input', { bubbles: true }));
                 targetTextarea.dispatchEvent(new Event('change', { bubbles: true }));
             }
         }
-        // -----------------------------------
 
         const iframe = mountPoint.querySelector('iframe');
         if (!iframe) return;
+
+        // --- TRANSFORM PLACEHOLDER TO LIVE WIDGET ---
+        const placeholder = mountPoint.querySelector('.widget-placeholder');
+        if (placeholder) placeholder.style.display = 'none'; // Hide <<notebook IDE widget>>
+        
+        // Strip the dashed border and background used for the editor placeholder
+        Object.assign(mountPoint.style, {
+            display: 'block', background: 'transparent', border: 'none', padding: '0'
+        });
+        iframe.style.display = 'block';
 
         window.addEventListener('message', (event) => {
             if (event.source !== iframe.contentWindow) return;
@@ -76,7 +110,7 @@
                     mountPoint.style.height = `${targetHeight}px`;
                 }
                 
-                // UX FIX: Fade the iframe in now that the size is perfectly calculated!
+                // Fade the iframe in now that the size is perfectly calculated
                 if (iframe.style.opacity === '0' || iframe.style.opacity === '') {
                     iframe.style.opacity = '1';
                 }

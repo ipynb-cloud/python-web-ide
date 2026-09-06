@@ -1,0 +1,38 @@
+name: Build CodeMirror 6 Bundle
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'cm6-entry.js'
+      - 'package.json'
+
+# Required to allow the bot to commit the built file back to the repo
+permissions:
+  contents: write
+
+jobs:
+  build-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build CodeMirror Bundle
+        run: npm run build
+
+      - name: Commit Built Bundle
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: Build CM6 bundle [skip ci]"
+          file_pattern: 'cm6.bundle.min.js'

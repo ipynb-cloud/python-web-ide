@@ -6,4 +6,228 @@
     <title>Modular Notebook IDE</title>
 
     <!-- Tailwind & Fonts -->
-    <script src="https://cdn.tailwindcss.com">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Pre-bundled CM6 wrapper -->
+    <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
+
+    <!-- Marked.js, SortableJS & Autosize -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/autosize.js/6.0.1/autosize.min.js"></script>
+
+    <!-- MathJax for LaTeX rendering -->
+    <script>
+        MathJax = {
+          tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+          startup: { typeset: false }
+        };
+        marked.setOptions({ breaks: true });
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <!-- Pyodide -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #ffffff; margin: 0; overflow-y: hidden; overflow-x: hidden; }
+        textarea { resize: none; overflow: hidden; }
+
+        /* Markdown Styles */
+        .markdown-body { padding: 0.5rem 1rem; font-family: 'Inter', sans-serif; color: #334155; }
+        .markdown-body h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em; }
+        .markdown-body h2 { font-size: 1.4em; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em;}
+        .markdown-body p { margin-bottom: 1em; line-height: 1.6; }
+        .markdown-body code { background-color: #f1f5f9; padding: 0.2em 0.4em; border-radius: 3px; font-family: 'Fira Code', monospace; font-size: 0.9em; }
+        .markdown-body pre { background-color: #f8fafc; padding: 1em; border: 1px solid #e2e8f0; border-radius: 0.375rem; overflow-x: auto; margin-bottom: 1em; }
+        .markdown-body ul { list-style-type: disc; padding-left: 2em; margin-bottom: 1em; }
+
+        /* Custom Element Tags styling */
+        notebook-text-cell, notebook-markdown-cell, notebook-code-cell { display: block; width: 100%; }
+
+        /* CodeMirror 6 Specific Overrides */
+        .cm-wrapper .cm-editor { flex: 1; }
+        .cm-editor.cm-focused { outline: none !important; }
+        .cm-activeLine { background-color: transparent !important; }
+        .cm-activeLineGutter { background-color: transparent !important; }
+        .cm-content { padding-right: 2.5rem !important; }
+
+        /* ACTION BUTTON & TOOLBAR LAYOUT TOGGLES */
+        #notebook-container { transition: padding 0.2s ease; }
+        body.layout-edge #notebook-container { padding-right: 1.25rem; padding-left: 1.25rem; }
+        body.layout-edge .cell-action-btn { top: 50%; bottom: auto; right: -0.875rem; transform: translateY(-50%); }
+        body.layout-edge .cell-toolbar { top: -0.5rem; right: 0.25rem; }
+
+        body.layout-inline #notebook-container { padding-right: 0; padding-left: 0; }
+        body.layout-inline .cell-action-btn { top: auto; bottom: 0.25rem; right: 0.25rem; transform: none; }
+        body.layout-inline .cell-toolbar { top: -0.5rem; right: 0.25rem; }
+    </style>
+</head>
+<body class="text-slate-800 flex flex-col transition-none layout-inline">
+
+    <!-- Connection / Status Overlay -->
+    <div id="error-modal" class="fixed inset-0 bg-white/80 z-50 flex-col items-center justify-center hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl border border-slate-200 text-center">
+            <p class="font-bold text-red-500 mb-4" id="modal-msg">Widget disconnected</p>
+            <button id="reconnect-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md font-bold shadow-sm hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 mx-auto">
+                <span id="btn-text">Try to connect</span>
+                <span id="btn-spinner" class="hidden w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            </button>
+        </div>
+    </div>
+
+    <header id="main-header" class="hidden bg-white border-b border-slate-200 px-4 py-2 flex justify-between items-center shrink-0 z-40 sticky top-0 shadow-sm">
+        <div class="flex items-center gap-3">
+            <h1 class="text-base font-semibold tracking-tight">PyNote</h1>
+            <div id="kernel-status" class="ml-4 flex items-center gap-2 text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-wider">
+                Starting Kernel...
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button id="run-all-btn" onclick="notebookCore.runAll()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                Run All
+            </button>
+        </div>
+    </header>
+
+    <main class="p-4 flex flex-col w-full box-border" id="main-content">
+        <div class="w-full flex flex-col relative box-border">
+            
+            <div id="top-inserter" class="h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 relative cursor-pointer w-4/5 mx-auto mb-1.5 z-10 flex items-center justify-center group/inserter" title="Add cell at top">
+                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors"></div></div>
+                <div class="relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white shadow-sm opacity-0 group-hover/inserter:opacity-100 transition-opacity duration-300 delay-0 group-hover/inserter:delay-250 mx-auto border-2 border-white">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
+                </div>
+            </div>
+            
+            <div id="notebook-container" class="pb-12 relative flex flex-col w-full box-border"></div>
+        </div>
+    </main>
+
+    <!-- Notebook Architecture Scripts -->
+    <script src="notebook-generic.js"></script>
+    <script src="text-cells.js"></script>
+    <script src="markdown-cells.js"></script>
+    <script src="code-cells.js"></script>
+
+    <!-- Bootstrap & Moodle Host Sync -->
+    <script>
+        const errorModal = document.getElementById('error-modal');
+        const reconnectBtn = document.getElementById('reconnect-btn');
+        let pendingSyncId = null, syncTimeout = null, initTimeout = null;
+        let lastSentHeight = 0;
+        let isStandaloneFallback = false;
+
+        function hashCode(str) {
+            let hash = 0;
+            for (let i = 0, len = str.length; i < len; i++) {
+                hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+            }
+            return hash.toString();
+        }
+
+        function lockWidget(message = "Widget disconnected") { 
+            if (isStandaloneFallback) return;
+            document.getElementById('modal-msg').innerText = message;
+            document.body.style.overflow = 'hidden';
+            errorModal.style.display = 'flex'; 
+        }
+
+        function unlockWidget() { 
+            document.body.style.overflow = 'hidden'; // Keep body hidden so it never wiggles
+            errorModal.style.display = 'none'; 
+            reconnectBtn.querySelector('#btn-spinner').classList.add('hidden'); 
+            reconnectBtn.disabled = false; 
+            reconnectBtn.querySelector('#btn-text').innerText = 'Try to connect'; 
+        }
+
+        function sendHeight() {
+            const mainContent = document.getElementById('main-content');
+            const header = document.getElementById('main-header');
+            if (!mainContent) return;
+
+            const headerHeight = (header && !header.classList.contains('hidden')) ? header.scrollHeight : 0;
+            const contentHeight = mainContent.scrollHeight; 
+            const totalHeight = headerHeight + contentHeight;
+
+            if (Math.abs(totalHeight - lastSentHeight) > 2) {
+                lastSentHeight = totalHeight;
+                window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: Math.max(totalHeight, 150) }, '*');
+            }
+        }
+
+        window.triggerHostSync = function(contentString) {
+            if (isStandaloneFallback) return; 
+            
+            pendingSyncId = Date.now().toString() + Math.random().toString();
+            window.parent.postMessage({ type: 'SYNC_CONTENT', payload: contentString, hash: hashCode(contentString), msgId: pendingSyncId }, '*');
+            
+            clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(() => lockWidget("Failed to save changes to host."), 2000);
+            
+            window.requestAnimationFrame(sendHeight);
+        };
+
+        reconnectBtn.addEventListener('click', () => {
+            reconnectBtn.querySelector('#btn-spinner').classList.remove('hidden');
+            reconnectBtn.querySelector('#btn-text').innerText = 'Connecting...';
+            reconnectBtn.disabled = true;
+            window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+            syncTimeout = setTimeout(() => { unlockWidget(); lockWidget(); }, 2000);
+        });
+
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'LOAD_CONTENT') {
+                clearTimeout(initTimeout); 
+                isStandaloneFallback = false;
+                
+                const config = event.data.config || {};
+                if (config.showTopBar) {
+                    document.getElementById('main-header').classList.remove('hidden');
+                }
+                
+                const topInserter = document.getElementById('top-inserter');
+                if (config.isReadOnly) {
+                    topInserter.style.display = 'none';
+                } else {
+                    topInserter.onclick = () => window.notebookCore.addCell(config.defaultCellType || 'code', 0);
+                }
+
+                window.notebookCore = new NotebookCore('notebook-container', config);
+                const initialCells = window.notebookCore.deserializeFromFlat(event.data.payload);
+                window.notebookCore.loadData(initialCells);
+                
+                unlockWidget();
+                clearTimeout(syncTimeout);
+                setTimeout(sendHeight, 300);
+
+            } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
+                clearTimeout(syncTimeout); 
+                unlockWidget();
+            }
+        });
+
+        window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+        
+        initTimeout = setTimeout(() => {
+            console.log("No host detected. Booting in Standalone Fallback mode.");
+            isStandaloneFallback = true;
+            document.getElementById('main-header').classList.remove('hidden');
+            
+            const topInserter = document.getElementById('top-inserter');
+            topInserter.onclick = () => window.notebookCore.addCell('code', 0);
+            
+            window.notebookCore = new NotebookCore('notebook-container', { isReadOnly: false });
+            const fallbackCells = window.notebookCore.deserializeFromFlat('# %% [code]\nprint("Standalone Mode")');
+            window.notebookCore.loadData(fallbackCells);
+            unlockWidget();
+        }, 1500);
+
+        new ResizeObserver(() => {
+            window.requestAnimationFrame(sendHeight);
+        }).observe(document.body);
+
+    </script>
+</body>
+</html>

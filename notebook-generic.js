@@ -355,7 +355,7 @@ class BaseNotebookCell extends HTMLElement {
             this.botInserter.title = `Add cell below`;
             this.botInserter.innerHTML = `
                 <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors"></div></div>
-                <div class="relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white shadow-sm opacity-0 group-hover/inserter:opacity-100 transition-opacity duration-300 delay-0 group-hover/inserter:delay-250 mx-auto border-2 border-white">
+                <div class="relative z-10 flex items-center justify-center w-7 h-7 text-white bg-blue-500 hover:bg-blue-600 rounded-full shadow-md opacity-0 group-hover/inserter:opacity-100 transition-all duration-300 delay-0 group-hover/inserter:delay-250 mx-auto">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
                 </div>
             `;
@@ -602,48 +602,77 @@ class NotebookCore {
     }
 
     deserializeFromFlat(payload) {
+        console.log("[Parser] Starting to parse flat payload. Total length:", payload?.length);
+        
         if (!payload || !payload.includes('# %%')) {
+            console.log("[Parser] No '# %%' markers found. Treating entire payload as single code cell.");
             return [{ type: 'code', content: payload || '' }];
         }
         
         const lines = payload.split(/\r?\n/);
+        console.log(`[Parser] Split into ${lines.length} lines. Processing line-by-line...`);
         const cells = [];
         let currentCell = null;
         
-        for (let line of lines) {
-            // Line-by-line parsing is 100% robust against edge cases
-            const markerMatch = line.match(/^# %%[ \t]*(?:\[([a-zA-Z]+)\])?[ \t]*(?:({.*?}))?[ \t]*$/);
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Highly forgiving regex: Looks for # %% (with optional spaces) and captures everything after it
+            const markerMatch = line.match(/^#\s*%%(.*)$/);
             
             if (markerMatch) {
-                if (currentCell) cells.push(currentCell);
+                console.log(`[Parser] Line ${i + 1}: Found cell marker -> "${line}"`);
                 
-                const type = markerMatch[1] || 'code';
-                const metaStr = markerMatch[2];
-                let isLocked = false;
-                
-                if (metaStr) {
-                    try {
-                        const metaObj = JSON.parse(metaStr.replace(/'/g, '"'));
-                        if (metaObj.locked) isLocked = true;
-                    } catch(e) { console.warn("Failed to parse metadata", metaStr); }
+                if (currentCell) {
+                    console.log(`[Parser] Saving previous ${currentCell.type} cell (${currentCell.content.length} chars)`);
+                    cells.push(currentCell);
                 }
                 
+                const metaRaw = markerMatch[1].trim();
+                let type = 'code';
+                let isLocked = false;
+                
+                // Extract type: e.g. [markdown]
+                const typeMatch = metaRaw.match(/\[([a-zA-Z]+)\]/);
+                if (typeMatch) type = typeMatch[1];
+                
+                // Extract json: e.g. {"locked": true}
+                const jsonMatch = metaRaw.match(/({.*})/);
+                if (jsonMatch) {
+                    try {
+                        const metaObj = JSON.parse(jsonMatch[1].replace(/'/g, '"'));
+                        if (metaObj.locked) isLocked = true;
+                    } catch(e) { 
+                        console.warn("[Parser] Failed to parse metadata json:", jsonMatch[1]); 
+                    }
+                }
+                
+                console.log(`[Parser] Parsed Marker: type=${type}, locked=${isLocked}`);
                 currentCell = { type, content: '', isLocked, isEditing: false };
             } else {
-                if (!currentCell) currentCell = { type: 'code', content: '', isLocked: false, isEditing: false };
+                if (!currentCell) {
+                    console.log(`[Parser] Line ${i + 1} has no preceding marker. Creating default code cell.`);
+                    currentCell = { type: 'code', content: '', isLocked: false, isEditing: false };
+                }
                 currentCell.content += line + '\n';
             }
         }
-        if (currentCell) cells.push(currentCell);
+        
+        if (currentCell) {
+            console.log(`[Parser] End of file. Saving final ${currentCell.type} cell (${currentCell.content.length} chars)`);
+            cells.push(currentCell);
+        }
         
         // Clean up content formatting
-        cells.forEach(c => {
+        cells.forEach((c, idx) => {
             if (c.type === 'markdown' || c.type === 'text') {
                 c.content = c.content.replace(/^"""\n?/, '').replace(/\n?"""\n?$/, '');
             }
             c.content = c.content.replace(/\n+$/, ''); // trim trailing empty lines
+            console.log(`[Parser] Finalized Cell ${idx + 1} [${c.type}]: Starts with "${c.content.substring(0, 20).replace(/\n/g, '\\n')}..."`);
         });
         
+        console.log(`[Parser] Finished parsing. Returning ${cells.length} cells.`);
         return cells.length ? cells : [{ type: 'code', content: payload }];
     }
 

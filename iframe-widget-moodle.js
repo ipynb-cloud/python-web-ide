@@ -20,6 +20,27 @@
         return str.replace(re, '');
     }
 
+// Helper to extract configuration from mount point attributes
+    function extractWidgetConfig(mountPoint, isReadOnly) {
+        const config = {
+            isReadOnly: isReadOnly,
+            lockAllMarkdown: mountPoint.getAttribute('data-lock-markdown') === 'true',
+            disableTypeChange: mountPoint.getAttribute('data-disable-type-change') === 'true',
+            hideCellToolbar: mountPoint.getAttribute('data-hide-cell-toolbar') === 'true',
+            defaultCellType: mountPoint.getAttribute('data-default-cell-type') || 'code'
+        };
+
+        // Support optional JSON data-config attribute as well
+        if (mountPoint.dataset.config) {
+            try {
+                Object.assign(config, JSON.parse(mountPoint.dataset.config));
+            } catch (e) {
+                console.warn("Invalid data-config JSON", e);
+            }
+        }
+        return config;
+    }
+    
     function initWidget(mountPoint) {
         const que = mountPoint.closest('.que');
         if (!que) return;
@@ -64,6 +85,8 @@
         const iframe = mountPoint.querySelector('iframe');
         if (!iframe) return;
 
+        const widgetConfig = extractWidgetConfig(mountPoint, isReadOnly);
+
         window.addEventListener('message', (event) => {
             if (event.source !== iframe.contentWindow) return;
 
@@ -71,9 +94,9 @@
                 iframe.contentWindow.postMessage({
                     type: 'LOAD_CONTENT',
                     payload: targetTextarea.value,
-                    config: { isReadOnly: isReadOnly }
+                    config: widgetConfig
                 }, '*');
-            } 
+            }
             else if (event.data.type === 'SYNC_CONTENT') {
                 targetTextarea.value = event.data.payload;
                 targetTextarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -102,7 +125,7 @@
             iframe.contentWindow.postMessage({
                 type: 'LOAD_CONTENT',
                 payload: targetTextarea.value,
-                config: { isReadOnly: isReadOnly }
+                config: widgetConfig
             }, '*');
         }
     }

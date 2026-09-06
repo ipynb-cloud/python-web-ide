@@ -61,22 +61,32 @@ plt.show = _custom_show
     else if (msg.action === 'EXECUTE') {
         currentExecId = msg.id;
         try {
-            await pyodide.loadPackagesFromImports(msg.code);
+            // OPTIMIZATION 1: Only run the heavy AST parser if "import" is actually in the code
+            if (msg.code.includes('import ')) {
+                await pyodide.loadPackagesFromImports(msg.code);
+            }
             
-            // Soft 15-second timeout via trace (OPTIMIZED)
+            // OPTIMIZATION 2: Tick-based tracing. 
+            // Checking time.time() is expensive in Wasm. Only check it every 100 instructions.
             await pyodide.runPythonAsync(`
 import sys
 import time
 _pynote_start_time = time.time()
+_pynote_tick = 0
 
 def _pynote_tracer(frame, event, arg):
-    # FAST PATH: If this is an imported library (like matplotlib), stop tracing its internals!
     if not frame.f_code.co_filename.startswith("<"):
         return None
         
-    if time.time() - _pynote_start_time > 15.0:
-        sys.settrace(None)
-        raise TimeoutError("Execution stopped: Time limit (15s) exceeded. Infinite loop detected.")
+    global _pynote_tick
+    _pynote_tick += 1
+    
+    if _pynote_tick > 100:
+        _pynote_tick = 0
+        if time.time() - _pynote_start_time > 15.0:
+            sys.settrace(None)
+            raise TimeoutError("Execution stopped: Time limit (15s) exceeded. Infinite loop detected.")
+            
     return _pynote_tracer
 
 sys.settrace(_pynote_tracer)

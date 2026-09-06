@@ -62,9 +62,9 @@ import time
 _pynote_start_time = time.time()
 
 def _pynote_tracer(frame, event, arg):
-    if time.time() - _pynote_start_time > 5.0:
+    if time.time() - _pynote_start_time > 30.0:
         sys.settrace(None)
-        raise TimeoutError("Execution stopped: Time limit (5s) exceeded.")
+        raise TimeoutError("Execution stopped: Time limit (30s) exceeded.")
     return _pynote_tracer
 
 sys.settrace(_pynote_tracer)

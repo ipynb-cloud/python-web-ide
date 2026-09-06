@@ -1,4 +1,4 @@
-const MathJaxHelper = {
+onst MathJaxHelper = {
     queue: function(el, onComplete) {
         if (window.MathJax && window.MathJax.typesetPromise) {
             window.MathJax.typesetPromise([el]).then(() => {
@@ -607,10 +607,11 @@ class NotebookCore {
         }
         
         const cells = [];
-        const chunks = payload.split(/# %%\s*\[(?<type>[a-zA-Z]+)\]\s*(?<meta>{.*?})?\s*\n/g);
+        // Updated Regex: Supports VS Code style `# %%`, optional types, optional JSON, and EOF without newlines
+        const chunks = payload.split(/# %%[ \t]*(?:\[([a-zA-Z]+)\])?[ \t]*(?:({.*?}))?[ \t]*(?:\r?\n|$)/g);
         
         for (let i = 1; i < chunks.length; i += 3) {
-            const type = chunks[i];
+            const type = chunks[i] || 'code'; // Default to code if no [type] provided
             const metaStr = chunks[i+1];
             let content = chunks[i+2] || '';
             

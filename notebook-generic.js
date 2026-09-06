@@ -82,7 +82,31 @@ plt.show = _custom_show
     async execute(code, targetDiv) {
         this.currentOutputDiv = targetDiv;
         await this.pyodide.loadPackagesFromImports(code);
-        const result = await this.pyodide.runPythonAsync(code);
+        
+        // --- TIMEOUT HACK FOR INFINITE LOOPS ---
+        // Inject a Python tracer that checks the clock on every line executed.
+        await this.pyodide.runPythonAsync(`
+import sys
+import time
+_pynote_start_time = time.time()
+
+def _pynote_tracer(frame, event, arg):
+    if time.time() - _pynote_start_time > 5.0:  # 5 second limit
+        sys.settrace(None)
+        raise TimeoutError("Execution stopped: Time limit (5s) exceeded. Do you have an infinite loop?")
+    return _pynote_tracer
+
+sys.settrace(_pynote_tracer)
+        `);
+
+        let result;
+        try {
+            result = await this.pyodide.runPythonAsync(code);
+        } finally {
+            // Always clear the tracer when done, even if the code errors out normally
+            await this.pyodide.runPythonAsync(`sys.settrace(None)`);
+        }
+        // --- END TIMEOUT HACK ---
 
         try { await this.pyodide.runPythonAsync(`import matplotlib.pyplot as plt\nif plt.get_fignums(): plt.show()`); } catch(e) {}
 
@@ -114,7 +138,7 @@ class BaseNotebookCell extends HTMLElement {
         
         this.cellId = this.getAttribute('cell-id') || Math.random().toString(36).substring(2, 9);
         this.cellType = this.getAttribute('cell-type') || 'text';
-        this.isLocked = this.hasAttribute('is-locked'); // Enforces strict read-only/no-delete
+        this.isLocked = this.hasAttribute('is-locked'); 
         this.content = this.getAttribute('content') || '';
 
         this.renderShell();
@@ -141,7 +165,7 @@ class BaseNotebookCell extends HTMLElement {
         this.mainBox = document.createElement('div');
         this.mainBox.className = 'cell-container group/cell relative bg-white border border-slate-200 rounded-md shadow-sm flex items-stretch transition-all hover:border-slate-300 min-h-[1.75rem] box-border';
         
-        const isReadOnlyGlobal = window.notebookCore && window.notebookCore.options.isReadOnly;
+        const isReadOnlyGlobal = window.notebookCore && window.notebookCore.options && window.notebookCore.options.isReadOnly;
 
         if (this.isLocked || isReadOnlyGlobal) {
             this.mainBox.classList.add('bg-slate-50');
@@ -195,7 +219,7 @@ class BaseNotebookCell extends HTMLElement {
         this.appendChild(this.mainBox);
 
         // Append Inserter LAST so it stays below any output appended later
-        const disableInsert = window.notebookCore && window.notebookCore.options.disableInsertAll;
+        const disableInsert = window.notebookCore && window.notebookCore.options && window.notebookCore.options.disableInsertAll;
         if (!isReadOnlyGlobal && !disableInsert) {
             this.botInserter = document.createElement('div');
             this.botInserter.className = 'absolute left-0 right-0 h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 flex items-center justify-center group/inserter cursor-pointer z-10 w-4/5 mx-auto';
@@ -247,6 +271,7 @@ class NotebookCore {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
         
+        // Centralize all default configurations here
         const defaultConfig = {
             isReadOnly: false,
             defaultCellType: 'code',
@@ -259,8 +284,8 @@ class NotebookCore {
             showTopBar: false,
             layout: 'inline'
         };
-        this.options = { ...defaultConfig, ...options };
         
+        this.options = { ...defaultConfig, ...options };
         this.isReadOnly = this.options.isReadOnly;
         this.defaultCellType = this.options.defaultCellType;
 
@@ -283,24 +308,6 @@ class NotebookCore {
             Array.from(this.container.children).forEach(cell => { if(cell.refresh) cell.refresh(); });
             if (typeof sendHeight === 'function') sendHeight();
         });
-    }
-
-    // --- NEW: Reset Kernel Logic ---
-    async restartKernel() {
-        if (!this.kernel) return;
-        
-        // Temporarily block UI
-        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
-        this.updateKernelStatus('loading');
-        
-        try {
-            // Nullify old kernel instance to force a fresh WebAssembly load
-            this.kernel = new PyodideKernel();
-            await this.kernel.init((status) => this.updateKernelStatus(status));
-        } catch (err) {
-            console.error("Kernel failed to restart:", err);
-            this.updateKernelStatus('error');
-        }
     }
 
     setupEventListeners() {
@@ -349,6 +356,23 @@ class NotebookCore {
         else if (status === 'loading-packages') el.innerHTML = `Loading Packages...`;
         else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready`;
         else el.innerHTML = `<span class="h-2 w-2 rounded-full bg-red-500 inline-block mr-1"></span> Error`;
+    }
+
+    async restartKernel() {
+        if (this.isReadOnly) return;
+        this.updateKernelStatus('loading');
+        
+        // Clear all cell outputs immediately
+        Array.from(this.container.children).forEach(cell => {
+            if (cell.tagName.toLowerCase() === 'notebook-code-cell' && cell.clearOutput) {
+                cell.clearOutput();
+                cell.updateKernelUIState(false);
+            }
+        });
+
+        // Initialize a completely new kernel instance
+        this.kernel = new PyodideKernel();
+        await this.kernel.init((status) => this.updateKernelStatus(status));
     }
 
     loadData(cellDataArray) {

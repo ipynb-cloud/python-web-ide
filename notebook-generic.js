@@ -11,7 +11,7 @@ const MathJaxHelper = {
 };
 
 class PyodideKernel {
-    constructor(maxOutputChars = 50000) {
+    constructor(maxOutputChars = 200) {
         this.isReady = false;
         this.pyodide = null;
         this.currentOutputDiv = null;
@@ -108,7 +108,7 @@ import js
 _pynote_start_time = time.time()
 
 def _pynote_tracer(frame, event, arg):
-    if time.time() - _pynote_start_time > 5.0:  
+    if time.time() - _pynote_start_time > 0.5:  
         sys.settrace(None)
         raise TimeoutError("Execution stopped: Time limit (5s) exceeded. Do you have an infinite loop?")
     

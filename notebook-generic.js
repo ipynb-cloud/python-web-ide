@@ -646,11 +646,16 @@ class NotebookCore {
                         console.warn("[Parser] Failed to parse metadata json:", jsonMatch[1]); 
                     }
                 }
+
+                // Apply the global lockAllMarkdown config if present
+                if (this.options && this.options.lockAllMarkdown && type === 'markdown') {
+                    isLocked = true;
+                }
                 
                 console.log(`[Parser] Parsed Marker: type=${type}, locked=${isLocked}`);
                 currentCell = { type, content: '', isLocked, isEditing: false };
             } else {
-                if (!currentCell) {
+            if (!currentCell) {
                     console.log(`[Parser] Line ${i + 1} has no preceding marker. Creating default code cell.`);
                     currentCell = { type: 'code', content: '', isLocked: false, isEditing: false };
                 }

@@ -182,21 +182,14 @@
                 clearTimeout(initTimeout); 
                 isStandaloneFallback = false;
                 
-                const config = event.data.config || {};
+               const config = event.data.config || {};
+                
                 if (config.showTopBar) {
                     document.getElementById('main-header').classList.remove('hidden');
                 }
-                
-                const topInserter = document.getElementById('top-inserter');
-                if (config.isReadOnly) {
-                    topInserter.style.display = 'none';
-                } else {
-                    topInserter.onclick = () => window.notebookCore.addCell(config.defaultCellType || 'code', 0);
-                }
 
+                // Pass the ENTIRE config object into the core. It handles everything now.
                 window.notebookCore = new NotebookCore('notebook-container', config);
-                const initialCells = window.notebookCore.deserializeFromFlat(event.data.payload);
-                window.notebookCore.loadData(initialCells);
                 
                 unlockWidget();
                 clearTimeout(syncTimeout);

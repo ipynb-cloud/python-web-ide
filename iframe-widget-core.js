@@ -92,10 +92,14 @@ export class WidgetHostCore {
 
     sendContent(content, isReadOnly = false) {
         if (this.iframe && this.iframe.contentWindow) {
+            // Grab widgetConfig if passed in options, otherwise fallback to basic readOnly
+            const configPayload = this.options.widgetConfig || {};
+            configPayload.isReadOnly = isReadOnly;
+    
             this.iframe.contentWindow.postMessage({ 
                 type: 'LOAD_CONTENT', 
                 payload: content,
-                config: { isReadOnly: isReadOnly }
+                config: configPayload
             }, '*');
         }
     }

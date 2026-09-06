@@ -121,6 +121,8 @@ class BaseNotebookCell extends HTMLElement {
         this.cellType = this.getAttribute('cell-type') || 'text';
         this.isReadOnly = this.hasAttribute('is-readonly');
         this.isLocked = this.hasAttribute('is-locked') || this.isReadOnly; // Locked implies non-editable/non-deletable
+        this.disableTypeChange = this.hasAttribute('disable-type-change');
+        this.hideCellToolbar = this.hasAttribute('hide-cell-toolbar');
         this.content = this.getAttribute('content') || '';
 
         this.renderShell();
@@ -159,8 +161,8 @@ class BaseNotebookCell extends HTMLElement {
         this.contentArea = document.createElement('div');
         this.contentArea.className = 'flex-1 relative flex flex-col min-w-0 p-0 box-border min-h-0';
         
-        // Render Toolbar (Modified for Locked state)
-        if (!this.isReadOnly) {
+        // Render Toolbar (Respecting hideCellToolbar and disableTypeChange)
+        if (!this.isReadOnly && !this.hideCellToolbar) {
             const toolbar = document.createElement('div');
             toolbar.className = 'cell-toolbar absolute z-40 flex items-center gap-1 bg-white/95 backdrop-blur-sm shadow-sm border border-slate-200 rounded-md px-1.5 py-0.5 opacity-0 group-hover/cell:opacity-100 transition-all text-xs';
 
@@ -172,23 +174,31 @@ class BaseNotebookCell extends HTMLElement {
                 badge.title = 'This cell is locked by the instructor';
                 toolbar.appendChild(badge);
             } else {
-                // Full Editable Toolbar
-                const dropdownWrap = document.createElement('div');
-                dropdownWrap.className = 'relative flex items-center justify-center rounded hover:bg-slate-100 transition-colors text-slate-500 font-medium px-1 cursor-pointer';
-                dropdownWrap.innerHTML = `
-                    <span>${this.cellType}</span>
-                    <svg class="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                    <select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Change Cell Type">
-                        <option value="code" ${this.cellType === 'code' ? 'selected' : ''}>code</option>
-                        <option value="markdown" ${this.cellType === 'markdown' ? 'selected' : ''}>markdown</option>
-                        <option value="text" ${this.cellType === 'text' ? 'selected' : ''}>text</option>
-                    </select>
-                `;
-                dropdownWrap.querySelector('select').addEventListener('change', (e) => {
-                    this.dispatchAction('cell-type-changed', { newType: e.target.value, content: this.content });
-                });
-                toolbar.appendChild(dropdownWrap);
+                // If type change is disabled, show static text instead of dropdown
+                if (!this.disableTypeChange) {
+                    const dropdownWrap = document.createElement('div');
+                    dropdownWrap.className = 'relative flex items-center justify-center rounded hover:bg-slate-100 transition-colors text-slate-500 font-medium px-1 cursor-pointer';
+                    dropdownWrap.innerHTML = `
+                        <span>${this.cellType}</span>
+                        <svg class="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        <select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Change Cell Type">
+                            <option value="code" ${this.cellType === 'code' ? 'selected' : ''}>code</option>
+                            <option value="markdown" ${this.cellType === 'markdown' ? 'selected' : ''}>markdown</option>
+                            <option value="text" ${this.cellType === 'text' ? 'selected' : ''}>text</option>
+                        </select>
+                    `;
+                    dropdownWrap.querySelector('select').addEventListener('change', (e) => {
+                        this.dispatchAction('cell-type-changed', { newType: e.target.value, content: this.content });
+                    });
+                    toolbar.appendChild(dropdownWrap);
+                } else {
+                    const badge = document.createElement('span');
+                    badge.className = 'text-slate-500 font-medium px-1 cursor-default pointer-events-none uppercase tracking-wider text-[10px]';
+                    badge.innerText = this.cellType;
+                    toolbar.appendChild(badge);
+                }
 
+                // Delete button for non-locked cells
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 border-l border-slate-200 pl-1';
                 deleteBtn.title = 'delete cell';
@@ -261,7 +271,10 @@ window.BaseNotebookCell = BaseNotebookCell;
 class NotebookCore {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
+        this.options = options;
         this.isReadOnly = options.isReadOnly || false;
+        this.defaultCellType = options.defaultCellType || 'code';
+        
         this.kernel = new PyodideKernel();
         this.kernel.init((status) => this.updateKernelStatus(status));
         
@@ -290,7 +303,7 @@ class NotebookCore {
         this.container.addEventListener('cell-insert-below', (e) => {
             if (this.isReadOnly) return;
             const el = e.target;
-            const newCell = this.createCellElement({ type: 'code', content: '' });
+            const newCell = this.createCellElement({ type: this.defaultCellType, content: '' });
             el.insertAdjacentElement('afterend', newCell);
             this.syncToServer();
             setTimeout(() => newCell.focusCell(), 50);
@@ -336,22 +349,31 @@ class NotebookCore {
     }
 
     createCellElement(data) {
+        // Auto-lock markdown and text cells if configured
+        const isTextual = data.type === 'markdown' || data.type === 'text';
+        const shouldLock = data.locked || (this.options.lockAllMarkdown && isTextual);
+
         let tagName = 'notebook-text-cell';
         if (data.type === 'markdown') tagName = 'notebook-markdown-cell';
         if (data.type === 'code') tagName = 'notebook-code-cell';
 
         const cell = document.createElement(tagName);
         cell.setAttribute('cell-id', data.id || Math.random().toString(36).substring(2, 9));
-        cell.setAttribute('cell-type', data.type || 'text');
+        cell.setAttribute('cell-type', data.type || this.defaultCellType);
         cell.setAttribute('content', data.content || '');
         if (data.output) cell.setAttribute('output', data.output);
         if (data.isEditing) cell.setAttribute('is-editing', '');
         if (this.isReadOnly) cell.setAttribute('is-readonly', '');
-        if (data.locked) cell.setAttribute('is-locked', '');
+        if (shouldLock) cell.setAttribute('is-locked', '');
+        
+        // Pass toolbar flags down to cell instances
+        if (this.options.disableTypeChange) cell.setAttribute('disable-type-change', '');
+        if (this.options.hideCellToolbar) cell.setAttribute('hide-cell-toolbar', '');
+
         return cell;
     }
 
-    addCell(type = 'code', index = 0) {
+    addCell(type = this.defaultCellType, index = 0) {
         if (this.isReadOnly) return;
         const newCell = this.createCellElement({ type: type, content: '', isEditing: type === 'markdown' });
         

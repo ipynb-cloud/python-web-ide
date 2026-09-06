@@ -20,20 +20,29 @@
     }
 
     // UPDATED: Now extracts data-show-top-bar
-    function extractWidgetConfig(mountPoint, isReadOnly) {
+function extractWidgetConfig(mountPoint, isReadOnly) {
+        // Base defaults
         const config = {
             isReadOnly: isReadOnly,
-            lockAllMarkdown: mountPoint.getAttribute('data-lock-markdown') === 'true',
-            disableTypeChange: mountPoint.getAttribute('data-disable-type-change') === 'true',
-            hideCellToolbar: mountPoint.getAttribute('data-hide-cell-toolbar') === 'true',
-            showTopBar: mountPoint.getAttribute('data-show-top-bar') === 'true',
-            defaultCellType: mountPoint.getAttribute('data-default-cell-type') || 'code'
+            defaultCellType: 'code'
         };
 
-        if (mountPoint.dataset.config) {
-            try { Object.assign(config, JSON.parse(mountPoint.dataset.config)); } 
-            catch (e) { console.warn("Invalid data-config JSON", e); }
+        // Find the JSON block and merge it in
+        const configScript = mountPoint.querySelector('script.widget-config');
+        if (configScript) {
+            try {
+                const parsed = JSON.parse(configScript.textContent);
+                Object.assign(config, parsed);
+            } catch (e) {
+                console.error("PyNote: Invalid JSON in widget-config", e);
+            }
         }
+        
+        // Force disables if globally readonly
+        if (isReadOnly) {
+            config.disableInsertAll = true;
+        }
+
         return config;
     }
 

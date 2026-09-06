@@ -2,7 +2,8 @@ window.NOTEBOOK_CONFIG = {
     outputCurtailThresholdLines: 40,
     outputCurtailShowLines: 10,
     outputLineHeightPx: 21,
-    autoClearOutputOnEdit: true
+    autoClearOutputOnEdit: true,
+    mdUseButtonHoverOnly: false // Set to true to hide the "Use" button until mouseover
 };
 
 const MathJaxHelper = {

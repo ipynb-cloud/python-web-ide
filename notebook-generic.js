@@ -1,5 +1,5 @@
-onst MathJaxHelper = {
-    queue: function(el, onComplete) {
+const MathJaxHelper = {
+    queue: function(el, onComplete) {a
         if (window.MathJax && window.MathJax.typesetPromise) {
             window.MathJax.typesetPromise([el]).then(() => {
                 if(onComplete) onComplete();
@@ -606,31 +606,43 @@ class NotebookCore {
             return [{ type: 'code', content: payload || '' }];
         }
         
+        const lines = payload.split(/\r?\n/);
         const cells = [];
-        // Updated Regex: Supports VS Code style `# %%`, optional types, optional JSON, and EOF without newlines
-        const chunks = payload.split(/# %%[ \t]*(?:\[([a-zA-Z]+)\])?[ \t]*(?:({.*?}))?[ \t]*(?:\r?\n|$)/g);
+        let currentCell = null;
         
-        for (let i = 1; i < chunks.length; i += 3) {
-            const type = chunks[i] || 'code'; // Default to code if no [type] provided
-            const metaStr = chunks[i+1];
-            let content = chunks[i+2] || '';
+        for (let line of lines) {
+            // Line-by-line parsing is 100% robust against edge cases
+            const markerMatch = line.match(/^# %%[ \t]*(?:\[([a-zA-Z]+)\])?[ \t]*(?:({.*?}))?[ \t]*$/);
             
-            let isLocked = false;
-            if (metaStr) {
-                try {
-                    const metaObj = JSON.parse(metaStr.replace(/'/g, '"'));
-                    if (metaObj.locked) isLocked = true;
-                } catch(e) { console.warn("Failed to parse metadata", metaStr); }
+            if (markerMatch) {
+                if (currentCell) cells.push(currentCell);
+                
+                const type = markerMatch[1] || 'code';
+                const metaStr = markerMatch[2];
+                let isLocked = false;
+                
+                if (metaStr) {
+                    try {
+                        const metaObj = JSON.parse(metaStr.replace(/'/g, '"'));
+                        if (metaObj.locked) isLocked = true;
+                    } catch(e) { console.warn("Failed to parse metadata", metaStr); }
+                }
+                
+                currentCell = { type, content: '', isLocked, isEditing: false };
+            } else {
+                if (!currentCell) currentCell = { type: 'code', content: '', isLocked: false, isEditing: false };
+                currentCell.content += line + '\n';
             }
-            
-            content = content.replace(/\r\n/g, '\n');
-            if (type === 'markdown' || type === 'text') {
-                content = content.replace(/^"""\n?/, '').replace(/\n?"""\s*$/, '');
-            }
-            content = content.replace(/\n+$/, ''); 
-            
-            cells.push({ type, content, isLocked, isEditing: false });
         }
+        if (currentCell) cells.push(currentCell);
+        
+        // Clean up content formatting
+        cells.forEach(c => {
+            if (c.type === 'markdown' || c.type === 'text') {
+                c.content = c.content.replace(/^"""\n?/, '').replace(/\n?"""\n?$/, '');
+            }
+            c.content = c.content.replace(/\n+$/, ''); // trim trailing empty lines
+        });
         
         return cells.length ? cells : [{ type: 'code', content: payload }];
     }

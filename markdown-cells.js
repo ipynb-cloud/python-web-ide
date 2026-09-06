@@ -57,19 +57,67 @@ class MarkdownCellElement extends window.BaseNotebookCell {
         }, 0);
     }
 
-    renderMarkdown() {
+renderMarkdown() {
         this.viewDiv.innerHTML = marked.parse(this.content || '*Empty Markdown cell*');
         
-        // Inject Smart Code Buttons
+        // Inject CM6 instances and Smart Code Buttons
         const preTags = this.viewDiv.querySelectorAll('pre');
         preTags.forEach(pre => {
-            pre.style.position = 'relative';
-            pre.classList.add('group');
-            
             const codeEl = pre.querySelector('code');
             if (!codeEl) return;
             
-            const codeText = codeEl.innerText;
+            // Extract the raw text and detect language
+            const codeText = codeEl.innerText.trim();
+            const languageMatch = codeEl.className.match(/language-(\w+)/);
+            const lang = languageMatch ? languageMatch[1] : 'text';
+
+            // Clear standard Markdown formatting and prep for CM6
+            pre.innerHTML = '';
+            pre.style.position = 'relative';
+            pre.style.padding = '0'; // CM6 will handle its own internal padding
+            pre.style.overflow = 'hidden'; // Let CM6 handle internal scrolling
+            pre.classList.add('group');
+
+            // 1. Initialize CodeMirror 6 Block
+            if (typeof cm6 !== 'undefined') {
+                const customExtensions = [];
+                if (cm6.basicSetup) customExtensions.push(cm6.basicSetup);
+
+                const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
+                const EditorState = cm6.EditorState || (cm6.state ? cm6.state.EditorState : null);
+
+                // Hide gutters and style to match markdown
+                if (EditorView && EditorView.theme) {
+                    customExtensions.push(EditorView.theme({
+                        ".cm-gutters": { display: "none" },
+                        "&": { backgroundColor: "transparent" },
+                        ".cm-scroller": { fontFamily: "'Fira Code', monospace", fontSize: "0.9em", padding: "1em" }
+                    }));
+                }
+
+                // Apply Syntax Highlighting
+                if (lang === 'python' && typeof cm6.python === 'function') {
+                    customExtensions.push(cm6.python());
+                } else if (lang === 'python' && cm6.langPython && typeof cm6.langPython.python === 'function') {
+                    customExtensions.push(cm6.langPython.python());
+                }
+
+                // Force strictly read-only
+                if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
+                if (EditorState && EditorState.readOnly) customExtensions.push(EditorState.readOnly.of(true));
+
+                const editorView = cm6.createEditorView(undefined, pre);
+                const state = cm6.createEditorState(codeText, { extensions: customExtensions });
+                editorView.setState(state);
+            } else {
+                // Fallback if cm6 is unavailable
+                const fallbackCode = document.createElement('code');
+                fallbackCode.innerText = codeText;
+                pre.style.padding = '1em';
+                pre.appendChild(fallbackCode);
+            }
+
+            // 2. Attach the "Use" Button overlay
             const btn = document.createElement('button');
             btn.className = 'absolute top-2 right-2 px-2 py-1 bg-slate-700/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-sans font-medium transition-all shadow-sm flex items-center gap-1.5 backdrop-blur-sm opacity-0 group-hover:opacity-100 z-10 border border-slate-600';
             
@@ -81,10 +129,10 @@ class MarkdownCellElement extends window.BaseNotebookCell {
             
             const actionHandler = (e) => {
                 e.preventDefault();
-                e.stopPropagation(); // prevent dblclick from triggering edit mode
+                e.stopPropagation();
                 
                 const editor = window.notebookCore ? window.notebookCore.activeCodeEditor : null;
-                const isReadOnly = window.notebookCore ? window.notebookCore.isReadOnly : false;
+                const isReadOnly = window.notebookCore ? window.notebookCore.options.isReadOnly : false;
 
                 if (editor && !isReadOnly && !this.isLocked) {
                     const selection = editor.state.selection.main;
@@ -125,7 +173,6 @@ class MarkdownCellElement extends window.BaseNotebookCell {
 
         MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
     }
-
     getActionButtonConfig() {
         if (this.isLocked) return null; // No action button on locked markdown
 

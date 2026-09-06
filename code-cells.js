@@ -46,7 +46,6 @@ class CodeCellElement extends window.BaseNotebookCell {
                 customExtensions.push(cm6.python());
             }
 
-            // Lock the code editor entirely if this cell is locked
             if (this.isLocked) {
                 const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
                 if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
@@ -205,7 +204,8 @@ class CodeCellElement extends window.BaseNotebookCell {
     applyHysteresis() {
         if (!this.outputContent) return;
         
-        const config = (window.notebookCore && window.notebookCore.options) || { outputCurtailThresholdLines: 40, outputCurtailShowLines: 10, outputLineHeightPx: 21 };        const textLines = (this.outputContent.innerText.match(/\n/g) || []).length + 1;
+        const config = (window.notebookCore && window.notebookCore.options) || { outputCurtailThresholdLines: 40, outputCurtailShowLines: 10, outputLineHeightPx: 21 };        
+        const textLines = (this.outputContent.innerText.match(/\n/g) || []).length + 1;
         const shouldCurtail = textLines > config.outputCurtailThresholdLines;
 
         if (shouldCurtail) {
@@ -240,6 +240,7 @@ class CodeCellElement extends window.BaseNotebookCell {
         };
     }
 
+    // --- NEW: Safe Execution Pattern ---
     async handleActionClick() {
         if (!window.notebookCore.kernel || !window.notebookCore.kernel.isReady) {
             this.outputContent.innerHTML = `<span class="text-orange-500 font-semibold">Kernel is still initializing... Please wait.</span>`;
@@ -250,28 +251,34 @@ class CodeCellElement extends window.BaseNotebookCell {
         }
         
         this.content = this.editorView ? this.editorView.state.doc.toString() : this.content;
+        
+        // 1. Immediately update UI to running state and clear output
         this.setButtonState('running');
-
         this.outputWrapper.classList.remove('hidden');
         this.outputWrapper.classList.add('flex');
         this.outputContent.innerHTML = '';
         this.dispatchAction('cell-height-changed');
         
+        // 2. Yield to browser so the spinner actually paints before blocking thread
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
         try {
+            // 3. Execute Pyodide (which might block the thread if running synchronous loops)
             await window.notebookCore.kernel.execute(this.content, this.outputContent);
-            this.output = this.outputContent.innerHTML;
-            this.setButtonState('success');
             
-            // Revert back to the play arrow after 2 seconds
-            setTimeout(() => {
-                this.setButtonState('default');
-            }, 2000);
+            // 4. Success State
+            this.setButtonState('success');
+            setTimeout(() => this.setButtonState('default'), 2000);
+            
+            // Optional: You can append a success string here if you want it explicitly in the terminal output
+            // this.outputContent.innerHTML += `<span class="text-green-600 font-mono text-[11px] mt-1 block">>>> Finished successfully.</span>`;
             
         } catch (err) {
+            // 5. Error State
             this.outputContent.innerHTML += `<span class="text-red-500 font-semibold mt-2 block">${err}</span>`;
-            this.output = this.outputContent.innerHTML;
             this.setButtonState('default');
         } finally {
+            this.output = this.outputContent.innerHTML;
             this.applyHysteresis();
             this.dispatchAction('cell-content-changed'); 
         }

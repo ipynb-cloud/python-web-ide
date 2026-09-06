@@ -261,6 +261,12 @@ class CodeCellElement extends window.BaseNotebookCell {
             await window.notebookCore.kernel.execute(this.content, this.outputContent);
             this.output = this.outputContent.innerHTML;
             this.setButtonState('success');
+            
+            // Revert back to the play arrow after 2 seconds
+            setTimeout(() => {
+                this.setButtonState('default');
+            }, 2000);
+            
         } catch (err) {
             this.outputContent.innerHTML += `<span class="text-red-500 font-semibold mt-2 block">${err}</span>`;
             this.output = this.outputContent.innerHTML;

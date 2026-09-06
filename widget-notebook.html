@@ -182,12 +182,17 @@
                 clearTimeout(initTimeout); 
                 isStandaloneFallback = false;
                 
-               const config = event.data.config || {};
+                const config = event.data.config || {};
                 
                 if (config.showTopBar) {
                     document.getElementById('main-header').classList.remove('hidden');
                 }
-
+                
+                if (config.layout === 'edge') {
+                    document.body.classList.remove('layout-inline');
+                    document.body.classList.add('layout-edge');
+                }
+                
                 // Pass the ENTIRE config object into the core. It handles everything now.
                 window.notebookCore = new NotebookCore('notebook-container', config);
                 

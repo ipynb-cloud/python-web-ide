@@ -19,8 +19,7 @@
         return str.replace(re, '');
     }
 
-    // UPDATED: Now extracts data-show-top-bar
-function extractWidgetConfig(mountPoint, isReadOnly) {
+    function extractWidgetConfig(mountPoint, isReadOnly) {
         // Base defaults
         const config = {
             isReadOnly: isReadOnly,
@@ -64,7 +63,15 @@ function extractWidgetConfig(mountPoint, isReadOnly) {
         const templateEl = que.querySelector('.widget-initial-state');
         
         if ((!initialPayload || initialPayload.trim() === '') && templateEl) {
-            let rawText = templateEl.tagName === 'TEMPLATE' ? templateEl.innerHTML : (templateEl.textContent || templateEl.innerText);
+            let rawText = '';
+            if (templateEl.tagName === 'TEMPLATE') {
+                rawText = templateEl.innerHTML;
+            } else if (templateEl.tagName === 'TEXTAREA') {
+                rawText = templateEl.value; // Textareas safely preserve all newlines!
+            } else {
+                rawText = templateEl.innerText || templateEl.textContent;
+            }
+            
             initialPayload = dedent(rawText.replace(/^\s*\n/, '')).trimEnd();
             targetTextarea.value = initialPayload;
             targetTextarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -103,7 +110,7 @@ function extractWidgetConfig(mountPoint, isReadOnly) {
                 }, '*');
             }
             else if (event.data.type === 'SYNC_HEIGHT') {
-                // UPDATED: Remove initialHeight lock. Allow it to shrink to the content's height (min 150px)
+                // Allow it to shrink to the content's height (min 150px)
                 const targetHeight = Math.max(150, event.data.payload);
                 
                 if (parseInt(mountPoint.style.height) !== targetHeight) {

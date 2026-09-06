@@ -85,6 +85,12 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
+            <!-- NEW: Restart Kernel Button -->
+            <button onclick="notebookCore.restartKernel()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-sm" title="Restart Kernel">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Restart
+            </button>
+            <div class="w-px h-4 bg-slate-300 mx-1"></div>
             <button id="run-all-btn" onclick="notebookCore.runAll()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                 Run All
             </button>
@@ -195,8 +201,11 @@
                 
                 // Pass the ENTIRE config object into the core. It handles everything now.
                 window.notebookCore = new NotebookCore('notebook-container', config);
+                
+                // Parse the incoming flat text and load it into the notebook UI
                 const cells = window.notebookCore.deserializeFromFlat(event.data.payload);
                 window.notebookCore.loadData(cells);
+                
                 unlockWidget();
                 clearTimeout(syncTimeout);
                 setTimeout(sendHeight, 300);
@@ -215,7 +224,7 @@
             document.getElementById('main-header').classList.remove('hidden');
             
             const topInserter = document.getElementById('top-inserter');
-            topInserter.onclick = () => window.notebookCore.addCell('code', 0);
+            if (topInserter) topInserter.onclick = () => window.notebookCore.addCell('code', 0);
             
             window.notebookCore = new NotebookCore('notebook-container', { isReadOnly: false });
             const fallbackCells = window.notebookCore.deserializeFromFlat('# %% [code]\nprint("Standalone Mode")');

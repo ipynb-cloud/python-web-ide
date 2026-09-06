@@ -1,35 +1,20 @@
-import { EditorView, basicSetup } from "codemirror";
-import { EditorState } from "@codemirror/state";
-import { python } from "@codemirror/lang-python";
-import { indentUnit } from "@codemirror/language";
-import { keymap } from "@codemirror/view";
-import { indentMore, indentLess } from "@codemirror/commands";
-import { search, openSearchPanel } from "@codemirror/search";
-
-// Expose the necessary modules to the global window.cm6 object
-// This exact structure matches what code-cells.js is looking for.
-window.cm6 = {
-    // Core Classes
-    EditorView,
-    EditorState,
-    
-    // Extensions & Language
-    basicSetup,
-    python,
-    
-    // Formatting & Indentation
-    language: { indentUnit },
-    state: { EditorState },
-    view: { EditorView },
-    
-    // Keyboard Bindings
-    keymap,
-    commands: { indentMore, indentLess },
-    
-    // Helper Functions
-    createEditorState: (doc, options = {}) => EditorState.create({ doc, ...options }),
-    createEditorView: (state, parent) => new EditorView({ state, parent }),
-    
-    // Legacy support for your original bundle
-    openSearchPanel
-};
+{
+  "name": "cm6-python-bundle",
+  "version": "1.0.0",
+  "description": "Bundles CodeMirror 6 with Python support for PyNote",
+  "scripts": {
+    "build": "esbuild cm6-entry.js --bundle --minify --format=iife --outfile=cm6.bundle.min.js"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.6.1",
+    "@codemirror/lang-python": "^6.1.6",
+    "@codemirror/language": "^6.10.2",
+    "@codemirror/search": "^6.5.6",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.33.0",
+    "codemirror": "^6.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.1"
+  }
+}

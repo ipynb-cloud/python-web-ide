@@ -25,6 +25,7 @@ class CodeCellElement extends window.BaseNotebookCell {
         this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] bg-slate-50/50 rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90' : ''}`;
         container.appendChild(this.editorWrap);
         
+        // Note: Shift+Enter execution is still handled outside the editor to ensure it always fires
         this.editorWrap.addEventListener('keydown', (e) => {
             if (e.shiftKey && e.key === 'Enter') {
                 e.preventDefault();
@@ -42,10 +43,36 @@ class CodeCellElement extends window.BaseNotebookCell {
             }
 
             const customExtensions = [];
+            
+            // 1. Core IDE Features (Syntax highlighting styles, bracket matching, line numbers, etc.)
+            if (cm6.basicSetup) customExtensions.push(cm6.basicSetup);
+
+            // 2. Python Language Grammar
             if (typeof cm6.python === 'function') {
                 customExtensions.push(cm6.python());
+            } else if (cm6.langPython && typeof cm6.langPython.python === 'function') {
+                customExtensions.push(cm6.langPython.python());
+            } else {
+                console.warn("PyNote: cm6.python extension missing from bundle.");
             }
 
+            // 3. Python Indentation Rules (4 Spaces)
+            if (cm6.language && cm6.language.indentUnit) {
+                customExtensions.push(cm6.language.indentUnit.of("    "));
+            }
+            if (cm6.state && cm6.state.EditorState && cm6.state.EditorState.tabSize) {
+                customExtensions.push(cm6.state.EditorState.tabSize.of(4));
+            }
+
+            // 4. Tab Key Binding (Override default accessibility tab-out to insert spaces)
+            if (cm6.keymap && cm6.commands && cm6.commands.indentMore && cm6.commands.indentLess) {
+                customExtensions.push(cm6.keymap.of([
+                    { key: "Tab", run: cm6.commands.indentMore },
+                    { key: "Shift-Tab", run: cm6.commands.indentLess }
+                ]));
+            }
+
+            // Lock the code editor entirely if this cell is locked
             if (this.isLocked) {
                 const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
                 if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
@@ -240,7 +267,6 @@ class CodeCellElement extends window.BaseNotebookCell {
         };
     }
 
-    // --- NEW: Safe Execution Pattern ---
     async handleActionClick() {
         if (!window.notebookCore.kernel || !window.notebookCore.kernel.isReady) {
             this.outputContent.innerHTML = `<span class="text-orange-500 font-semibold">Kernel is still initializing... Please wait.</span>`;
@@ -263,15 +289,12 @@ class CodeCellElement extends window.BaseNotebookCell {
         await new Promise(resolve => setTimeout(resolve, 50));
         
         try {
-            // 3. Execute Pyodide (which might block the thread if running synchronous loops)
+            // 3. Execute Kernel
             await window.notebookCore.kernel.execute(this.content, this.outputContent);
             
             // 4. Success State
             this.setButtonState('success');
             setTimeout(() => this.setButtonState('default'), 2000);
-            
-            // Optional: You can append a success string here if you want it explicitly in the terminal output
-            // this.outputContent.innerHTML += `<span class="text-green-600 font-mono text-[11px] mt-1 block">>>> Finished successfully.</span>`;
             
         } catch (err) {
             // 5. Error State

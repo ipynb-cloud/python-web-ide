@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyNote Minimal Demo</title>
+
+    <!-- Tailwind & Fonts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Dependencies -->
+    <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/autosize.js/6.0.1/autosize.min.js"></script>
+
+    <!-- MathJax for LaTeX -->
+    <script>
+        MathJax = {
+          tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+          startup: { typeset: false }
+        };
+        marked.setOptions({ breaks: true });
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <!-- Pyodide -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        textarea { resize: none; overflow: hidden; }
+
+        /* Markdown Styles */
+        .markdown-body { padding: 0.5rem 1rem; font-family: 'Inter', sans-serif; color: #334155; }
+        .markdown-body h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em; }
+        .markdown-body h2 { font-size: 1.4em; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em;}
+        .markdown-body p { margin-bottom: 1em; line-height: 1.6; }
+        .markdown-body code { background-color: #f1f5f9; padding: 0.2em 0.4em; border-radius: 3px; font-family: 'Fira Code', monospace; font-size: 0.9em; }
+        .markdown-body pre { background-color: #f8fafc; padding: 1em; border: 1px solid #e2e8f0; border-radius: 0.375rem; overflow-x: auto; margin-bottom: 1em; }
+        .markdown-body ul { list-style-type: disc; padding-left: 2em; margin-bottom: 1em; }
+
+        /* Custom Element Tags styling */
+        notebook-text-cell, notebook-markdown-cell, notebook-code-cell { display: block; width: 100%; }
+
+        /* CodeMirror 6 Overrides */
+        .cm-wrapper .cm-editor { flex: 1; }
+        .cm-editor.cm-focused { outline: none !important; }
+        .cm-activeLine { background-color: transparent !important; }
+        .cm-activeLineGutter { background-color: transparent !important; }
+        .cm-content { padding-right: 2.5rem !important; }
+
+        /* Layout Defaults */
+        #notebook-container { padding-right: 0; padding-left: 0; }
+        .cell-action-btn { top: auto; bottom: 0.25rem; right: 0.25rem; transform: none; }
+        .cell-toolbar { top: -0.5rem; right: 0.25rem; }
+    </style>
+</head>
+<body class="text-slate-800 flex flex-col min-h-screen bg-slate-50">
+
+    <header class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shrink-0 z-40 sticky top-0 shadow-sm">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold tracking-tight text-slate-800">PyNote<span class="text-blue-500">.</span></h1>
+            <div id="kernel-status" class="flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full uppercase tracking-wider">
+                Starting Kernel...
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <input type="file" id="ipynb-upload" accept=".ipynb" class="hidden">
+            <button onclick="document.getElementById('ipynb-upload').click()" class="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-sm">
+                Import .ipynb
+            </button>
+            <button onclick="exportToIpynb()" class="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-sm">
+                Export .ipynb
+            </button>
+            <div class="w-px h-6 bg-slate-200 mx-1"></div>
+            
+            <button onclick="notebookCore.restartKernel()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-sm" title="Restart Kernel">
+                Restart Kernel
+            </button>
+            <button onclick="notebookCore.runAll()" class="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm">
+                Run All
+            </button>
+        </div>
+    </header>
+
+    <main class="p-6 flex flex-col w-full max-w-4xl mx-auto box-border flex-1">
+        <div class="w-full flex flex-col relative box-border bg-white p-8 rounded-xl shadow-sm border border-slate-200 min-h-[50vh]">
+            
+            <!-- Top Inserter -->
+            <div id="top-inserter" class="h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 relative cursor-pointer w-4/5 mx-auto mb-1.5 z-10 flex items-center justify-center group/inserter" title="Add cell at top">
+                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors"></div></div>
+                <div class="relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white shadow-sm opacity-0 group-hover/inserter:opacity-100 transition-opacity mx-auto border-2 border-white">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
+                </div>
+            </div>
+            
+            <div id="notebook-container" class="pb-2 relative flex flex-col w-full box-border"></div>
+        </div>
+    </main>
+    <script src="https://python-web-ide.pages.dev/pynote-bundle.min.js"></script>
+    <script>
+        // Mock host functions for standalone mode
+        window.triggerHostSync = function() { };
+        window.sendHeight = function() { };
+
+        // Initialize with SKULPT Kernel
+        window.notebookCore = new NotebookCore('notebook-container', { 
+            isReadOnly: false, 
+            showTopBar: true, 
+            layout: 'inline',
+            kernelType: 'skulpt', // Can be 'pyodide' or 'skulpt'
+            maxOutputChars: 50000 // Stops infinite print loops
+        });
+
+        // Load a default greeting cell
+        const defaultCells = [
+            { type: 'markdown', content: '### PyNote with Skulpt\nYou are running the notebook locally using **Skulpt**. Try writing an infinite print loop to see the failsafe in action!' },
+            { type: 'code', content: 'for i in range(100000):\n    print(f"Printing line {i}")' }
+        ];
+        window.notebookCore.loadData(defaultCells);
+
+        // --- IPYNB EXPORT/IMPORT LOGIC OMITTED FOR BREVITY (Keep your existing script!) ---
+    </script>
+</body>
+</html>

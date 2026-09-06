@@ -11,18 +11,17 @@ const MathJaxHelper = {
 };
 
 class PyodideWorkerKernel {
-    constructor(maxOutputChars = 50000, options = {}) {
+    constructor(options = {}) {
         this.isReady = false;
         this.worker = null;
         this.callbacks = {}; 
         this.targetDivs = {}; 
-        
-        this.maxOutputChars = maxOutputChars;
         this.currentOutputCounts = {};
         
         this.options = options;
+        this.widgetId = options.widgetId || Math.random().toString(36).substring(2, 10);
+        this.maxOutputChars = options.maxOutputChars || 50000;
         this.kernelMode = options.kernelMode || 'local'; 
-        this.preloadMatplotlib = options.preloadMatplotlib !== false; 
     }
 
     init(statusCallback) {
@@ -34,11 +33,9 @@ class PyodideWorkerKernel {
         });
 
         if (this.kernelMode === 'local') {
-            // Spin up a local worker right here in the iframe
             this.worker = new Worker('pyodide-worker.js');
             this.worker.onmessage = (e) => this.handleMessage(e.data);
         } else {
-            // Moodle Singleton Mode: Route messages up to the parent window
             this.hostListener = (e) => {
                 if (e.data.type === 'KERNEL_REPLY') this.handleMessage(e.data.payload);
             };
@@ -51,7 +48,8 @@ class PyodideWorkerKernel {
         }
         
         this.worker.postMessage({ 
-            id: initId, 
+            id: initId,
+            widgetId: this.widgetId, // Send Widget ID to secure namespace
             action: 'INIT', 
             config: this.options 
         });
@@ -152,6 +150,7 @@ class PyodideWorkerKernel {
 
             this.worker.postMessage({
                 id: execId,
+                widgetId: this.widgetId, // Keep executions tied to this widget's namespace
                 action: 'EXECUTE',
                 code: code,
                 config: this.options
@@ -399,16 +398,16 @@ class NotebookCore {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
         
-        // Config injected from Moodle iframe widget config or standalone HTML script
         const defaultConfig = {
+            widgetId: Math.random().toString(36).substring(2, 10), // Unique ID for this notebook
             isReadOnly: false,
             defaultCellType: 'code',
             kernelType: 'pyodide', 
             kernelMode: 'local',   
             preloadMatplotlib: true,
             maxOutputChars: 50000, 
-            enableTracing: true,       // New: Toggle tracer loop protection
-            maxRuntime: 15.0,          // New: Configurable loop timeout
+            enableTracing: true,       
+            maxRuntime: 15.0,          
             disableInsertAll: false,
             disableInsertTop: false,
             outputCurtailThresholdLines: 40,
@@ -436,8 +435,7 @@ class NotebookCore {
         if (this.options.kernelType === 'skulpt') {
             this.kernel = new SkulptKernel(this.options.maxOutputChars);
         } else {
-            // Pass entire options block down so the Worker config gets enableTracing/maxRuntime
-            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, this.options);
+            this.kernel = new PyodideWorkerKernel(this.options);
         }
         
         this.kernel.init((status) => this.updateKernelStatus(status));
@@ -496,13 +494,16 @@ class NotebookCore {
         else if (status === 'loading-packages') el.innerHTML = `Loading Packages...`;
         else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready <span class="ml-1 text-[9px] opacity-60">(${this.options.kernelType})</span>`;
         else el.innerHTML = `<span class="h-2 w-2 rounded-full bg-red-500 inline-block mr-1"></span> Error`;
+        
+        if (status === 'ready') {
+            window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
+        }
     }
 
     async restartKernel() {
         if (this.isReadOnly) return;
         this.updateKernelStatus('loading');
         
-        // Clear all cell outputs immediately
         Array.from(this.container.children).forEach(cell => {
             if (cell.tagName.toLowerCase() === 'notebook-code-cell' && cell.clearOutput) {
                 cell.clearOutput();
@@ -510,8 +511,6 @@ class NotebookCore {
             }
         });
 
-        // Hard terminate the current worker if it exists. 
-        // This causes Pyodide state to be completely wiped.
         if (this.kernel && typeof this.kernel.destroy === 'function') {
             this.kernel.destroy();
         }
@@ -519,7 +518,7 @@ class NotebookCore {
         if (this.options.kernelType === 'skulpt') {
             this.kernel = new SkulptKernel(this.options.maxOutputChars);
         } else {
-            this.kernel = new PyodideWorkerKernel(this.options.maxOutputChars, this.options);
+            this.kernel = new PyodideWorkerKernel(this.options);
         }
         await this.kernel.init((status) => this.updateKernelStatus(status));
     }

@@ -32,13 +32,21 @@ matplotlib.use('svg')
 import matplotlib.pyplot as plt
 import io
 import js
+import sys
 
 def _custom_show():
-    buf = io.BytesIO()
-    plt.savefig(buf, format='svg', bbox_inches='tight')
-    buf.seek(0)
-    js.sendSvg(buf.read().decode('utf-8'))
-    plt.close()
+    # Pause the timeout tracer while Matplotlib renders to avoid unfair timeouts
+    _prev_trace = sys.gettrace()
+    sys.settrace(None)
+    
+    try:
+        buf = io.BytesIO()
+        plt.savefig(buf, format='svg', bbox_inches='tight')
+        buf.seek(0)
+        js.sendSvg(buf.read().decode('utf-8'))
+        plt.close()
+    finally:
+        sys.settrace(_prev_trace)
 
 plt.show = _custom_show
 `;
@@ -55,16 +63,20 @@ plt.show = _custom_show
         try {
             await pyodide.loadPackagesFromImports(msg.code);
             
-            // Soft 5-second timeout via trace
+            // Soft 15-second timeout via trace (OPTIMIZED)
             await pyodide.runPythonAsync(`
 import sys
 import time
 _pynote_start_time = time.time()
 
 def _pynote_tracer(frame, event, arg):
-    if time.time() - _pynote_start_time > 30.0:
+    # FAST PATH: If this is an imported library (like matplotlib), stop tracing its internals!
+    if not frame.f_code.co_filename.startswith("<"):
+        return None
+        
+    if time.time() - _pynote_start_time > 15.0:
         sys.settrace(None)
-        raise TimeoutError("Execution stopped: Time limit (30s) exceeded.")
+        raise TimeoutError("Execution stopped: Time limit (15s) exceeded. Infinite loop detected.")
     return _pynote_tracer
 
 sys.settrace(_pynote_tracer)

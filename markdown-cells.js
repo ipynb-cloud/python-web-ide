@@ -10,9 +10,8 @@ class MarkdownCellElement extends window.BaseNotebookCell {
 
         this.viewDiv = document.createElement('div');
         this.viewDiv.className = `markdown-body cursor-pointer min-h-[1.75rem] flex-1 ${this.isEditing ? 'hidden' : ''}`;
-        this.viewDiv.innerHTML = marked.parse(this.content || '*Empty Markdown. Double click to edit.*');
         
-        MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
+        this.renderMarkdown();
 
         this.viewDiv.addEventListener('dblclick', () => {
             if (this.isLocked) return; // Prevent unlocking via double click
@@ -32,6 +31,10 @@ class MarkdownCellElement extends window.BaseNotebookCell {
             this.content = this.textarea.value;
             autosize.update(this.textarea);
             this.dispatchAction('cell-content-changed');
+        });
+
+        this.textarea.addEventListener('focus', () => {
+            if (window.notebookCore) window.notebookCore.activeCodeEditor = null;
         });
 
         this.textarea.addEventListener('keydown', (e) => {
@@ -54,6 +57,75 @@ class MarkdownCellElement extends window.BaseNotebookCell {
         }, 0);
     }
 
+    renderMarkdown() {
+        this.viewDiv.innerHTML = marked.parse(this.content || '*Empty Markdown cell*');
+        
+        // Inject Smart Code Buttons
+        const preTags = this.viewDiv.querySelectorAll('pre');
+        preTags.forEach(pre => {
+            pre.style.position = 'relative';
+            pre.classList.add('group');
+            
+            const codeEl = pre.querySelector('code');
+            if (!codeEl) return;
+            
+            const codeText = codeEl.innerText;
+            const btn = document.createElement('button');
+            btn.className = 'absolute top-2 right-2 px-2 py-1 bg-slate-700/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-sans font-medium transition-all shadow-sm flex items-center gap-1.5 backdrop-blur-sm opacity-0 group-hover:opacity-100 z-10 border border-slate-600';
+            
+            const defaultIcon = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`;
+            const insertIcon = `<svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
+            const copyIcon = `<svg class="w-3 h-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
+
+            btn.innerHTML = `${defaultIcon} <span>Use</span>`;
+            
+            const actionHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation(); // prevent dblclick from triggering edit mode
+                
+                const editor = window.notebookCore ? window.notebookCore.activeCodeEditor : null;
+                const isReadOnly = window.notebookCore ? window.notebookCore.isReadOnly : false;
+
+                if (editor && !isReadOnly && !this.isLocked) {
+                    const selection = editor.state.selection.main;
+                    editor.dispatch({
+                        changes: { from: selection.from, to: selection.to, insert: codeText },
+                        selection: { anchor: selection.from + codeText.length }
+                    });
+                    editor.focus();
+                    btn.innerHTML = `${insertIcon} <span class="text-green-400">Inserted</span>`;
+                } else {
+                    const copyFallback = (text) => {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = text;
+                        textArea.style.position = "fixed";
+                        document.body.appendChild(textArea);
+                        textArea.focus();
+                        textArea.select();
+                        try { document.execCommand('copy'); } catch (err) {}
+                        document.body.removeChild(textArea);
+                    };
+                    
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(codeText).catch(() => copyFallback(codeText));
+                    } else {
+                        copyFallback(codeText);
+                    }
+                    btn.innerHTML = `${copyIcon} <span class="text-blue-400">Copied</span>`;
+                }
+                
+                setTimeout(() => { btn.innerHTML = `${defaultIcon} <span>Use</span>`; }, 2000);
+            };
+
+            btn.onclick = actionHandler;
+            btn.ondblclick = (e) => e.stopPropagation();
+            
+            pre.appendChild(btn);
+        });
+
+        MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
+    }
+
     getActionButtonConfig() {
         if (this.isLocked) return null; // No action button on locked markdown
 
@@ -68,15 +140,14 @@ class MarkdownCellElement extends window.BaseNotebookCell {
         if (this.isLocked) return;
         this.isEditing = !this.isEditing;
         if (!this.isEditing) {
-            this.viewDiv.innerHTML = marked.parse(this.content || '*Empty Markdown cell*');
-            MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
+            this.renderMarkdown();
         }
         this.toggleMode();
         this.dispatchAction('cell-content-changed');
     }
 
     toggleMode() {
-        if (this.isEditing && !this.isLocked) {
+        if (this.isEditing) {
             this.viewDiv.classList.add('hidden');
             this.editDiv.classList.remove('hidden');
             this.editDiv.classList.add('flex');

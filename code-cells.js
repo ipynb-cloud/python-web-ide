@@ -58,6 +58,10 @@ class CodeCellElement extends window.BaseNotebookCell {
             const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
             if (EditorView && EditorView.updateListener) {
                 customExtensions.push(EditorView.updateListener.of((update) => {
+                    if (update.focusChanged && update.view.hasFocus) {
+                        if (window.notebookCore) window.notebookCore.activeCodeEditor = update.view;
+                    }
+                    
                     if (update.focusChanged && !update.view.hasFocus) {
                         const newContent = update.view.state.doc.toString();
                         if (this.content !== newContent) {
@@ -238,7 +242,13 @@ class CodeCellElement extends window.BaseNotebookCell {
     }
 
     async handleActionClick() {
-        if (!window.notebookCore.kernel || !window.notebookCore.kernel.isReady) return;
+        if (!window.notebookCore.kernel || !window.notebookCore.kernel.isReady) {
+            this.outputContent.innerHTML = `<span class="text-orange-500 font-semibold">Kernel is still initializing... Please wait.</span>`;
+            this.outputWrapper.classList.remove('hidden');
+            this.outputWrapper.classList.add('flex');
+            this.dispatchAction('cell-height-changed');
+            return;
+        }
         
         this.content = this.editorView ? this.editorView.state.doc.toString() : this.content;
         this.setButtonState('running');

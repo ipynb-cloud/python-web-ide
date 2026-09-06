@@ -12,6 +12,10 @@ class TextCellElement extends window.BaseNotebookCell {
             this.dispatchAction('cell-content-changed');
         });
 
+        this.textarea.addEventListener('focus', () => {
+            if (window.notebookCore) window.notebookCore.activeCodeEditor = null;
+        });
+
         this.textarea.addEventListener('keydown', (e) => {
             if (e.shiftKey && e.key === 'Enter') {
                 e.preventDefault();

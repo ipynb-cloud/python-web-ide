@@ -6,7 +6,7 @@ import { keymap } from "@codemirror/view";
 import { indentMore, indentLess } from "@codemirror/commands";
 import { search, openSearchPanel } from "@codemirror/search";
 
-// Expose the necessary modules to the global window.cm6 object
+// Expose the necessary modules to the global window.cm6 object  
 // This exact structure matches what code-cells.js is looking for.
 window.cm6 = {
     // Core Classes

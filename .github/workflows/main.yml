@@ -1,0 +1,21 @@
+ - name: Setup Node.js
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+
+  - name: Concatenate and Minify
+    run: |
+      # 1. Combine the files in the strict required order
+      cat notebook-generic.js text-cells.js markdown-cells.js code-cells.js > pynote-bundle.js
+      
+      # 2. Use Terser (via npx) to minify the combined file for faster loading
+      npx terser pynote-bundle.js -o pynote-bundle.min.js --compress --mangle
+      
+      # 3. Clean up the un-minified combined file
+      rm pynote-bundle.js 
+
+  - name: Commit Bundled Files
+    uses: stefanzweifel/git-auto-commit-action@v5
+    with:
+      commit_message: "chore: Auto-bundle notebook JS components [skip ci]"
+      file_pattern: 'pynote-bundle.min.js'

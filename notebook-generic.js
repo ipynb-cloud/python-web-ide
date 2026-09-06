@@ -1,10 +1,3 @@
-window.NOTEBOOK_CONFIG = {
-    outputCurtailThresholdLines: 40,
-    outputCurtailShowLines: 10,
-    outputLineHeightPx: 21,
-    autoClearOutputOnEdit: true
-};
-
 const MathJaxHelper = {
     queue: function(el, onComplete) {
         if (window.MathJax && window.MathJax.typesetPromise) {
@@ -205,7 +198,8 @@ class BaseNotebookCell extends HTMLElement {
         this.appendChild(this.mainBox);
 
         // Append Inserter LAST so it stays below any output appended later
-        if (!isReadOnlyGlobal && !globalConfig.disableInsertAll) {
+        const disableInsert = window.notebookCore && window.notebookCore.options.disableInsertAll;
+        if (!isReadOnlyGlobal && !disableInsert) {
             this.botInserter = document.createElement('div');
             // Delayed expansion CSS, perfectly anchored to the center of the 12px vertical margin
             this.botInserter.className = 'absolute left-0 right-0 h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 flex items-center justify-center group/inserter cursor-pointer z-10 w-4/5 mx-auto';
@@ -258,10 +252,24 @@ window.BaseNotebookCell = BaseNotebookCell;
 class NotebookCore {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
-        this.options = options;
-        this.isReadOnly = options.isReadOnly || false;
-        this.defaultCellType = options.defaultCellType || 'code';
-
+        
+        // Centralize all default configurations here
+        const defaultConfig = {
+            isReadOnly: false,
+            defaultCellType: 'code',
+            disableInsertAll: false,
+            disableInsertTop: false,
+            outputCurtailThresholdLines: 40,
+            outputCurtailShowLines: 10,
+            outputLineHeightPx: 21,
+            autoClearOutputOnEdit: true,
+            showTopBar: false,
+            layout: 'inline'
+        };
+        this.options = { ...defaultConfig, ...options };
+        
+        this.isReadOnly = this.options.isReadOnly;
+        this.defaultCellType = this.options.defaultCellType;
         // Centralized Top Inserter Configuration
         const topInserter = document.getElementById('top-inserter');
         if (topInserter) {

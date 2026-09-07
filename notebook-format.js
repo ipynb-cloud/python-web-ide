@@ -4,7 +4,7 @@ class NotebookFormatConverter {
      */
     static serializeToFlat(cells) {
         let out = '';
-        cells.forEach((cell) => {
+        cells.forEach((cell, index) => {
             // Support passing either a DOM Cell element or a raw data object
             const data = typeof cell.toJSON === 'function' ? cell.toJSON() : cell;
             const type = data.type;
@@ -17,19 +17,22 @@ class NotebookFormatConverter {
             const metaStr = Object.keys(metaObj).length > 0 ? ` ${JSON.stringify(metaObj)}` : '';
             
             if (type === 'code') {
-                // Code cells perfectly preserve the author's internal newlines
-                out += `# %% [code]${metaStr}\n${data.content || ''}\n\n`;
+                // Code cells output their content exactly as typed
+                out += `# %% [code]${metaStr}\n${data.content || ''}`;
             } else {
                 // Markdown cells strip trailing newlines so the """ block is clean
                 const cleanContent = (data.content || '').replace(/\n+$/, '');
-                out += `# %% [${type}]${metaStr}\n"""\n${cleanContent}\n"""\n\n`;
+                out += `# %% [${type}]${metaStr}\n"""\n${cleanContent}\n"""`;
+            }
+            
+            // Only add the visual separator gap between cells.
+            // NEVER append it to the absolute final cell.
+            if (index < cells.length - 1) {
+                out += '\n\n';
             }
         });
         
-        // CRITICAL FIX: Instead of trimEnd() (which deletes ALL intentional empty lines 
-        // in the final cell), we just slice off the very last \n from the loop's padding.
-        // This leaves exactly 1 POSIX newline at the EOF while protecting your cell padding!
-        return out.slice(0, -1);
+        return out; 
     }
 
     /**
@@ -81,6 +84,7 @@ class NotebookFormatConverter {
                 if (!currentCell) {
                     currentCell = { type: 'code', content: '', isLocked: false, isHidden: false, isEditing: false };
                 }
+                // The split loop artificially adds exactly 1 POSIX newline to every line parsed
                 currentCell.content += line + '\n';
             }
         }
@@ -88,16 +92,23 @@ class NotebookFormatConverter {
         if (currentCell) cells.push(currentCell);
         
         // --- The Cleanup Phase ---
-        cells.forEach(c => {
+        cells.forEach((c, index) => {
             if (c.type === 'markdown' || c.type === 'text') {
                 // Aggressively strip quotes regardless of invisible Moodle spacing
                 c.content = c.content.replace(/^\s*"""\s*\n?/, '').replace(/\n?\s*"""\s*$/, '');
                 // Markdown editors don't need trailing visual padding
                 c.content = c.content.replace(/\n+$/, ''); 
             } else if (c.type === 'code') {
-                // Strip EXACTLY the 1 or 2 newlines added by the serialization gap.
-                // This perfectly preserves any EXTRA empty lines the author intentionally left.
-                c.content = c.content.replace(/\n{1,2}$/, '');
+                if (index < cells.length - 1) {
+                    // Middle cells had '\n\n' appended during serialization.
+                    // We strip up to 2 newlines to cleanly remove this visual separator.
+                    c.content = c.content.replace(/\n{1,2}$/, '');
+                } else {
+                    // The last cell had NOTHING appended during serialization.
+                    // We ONLY strip the 1 artificial '\n' added by the parsing loop above.
+                    // This preserves EVERY newline the author intentionally placed!
+                    c.content = c.content.replace(/\n$/, '');
+                }
             }
         });
         

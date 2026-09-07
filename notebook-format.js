@@ -3,10 +3,7 @@ class NotebookFormatConverter {
      * Converts a Native PyNote Object Array into a .pynote.py Flatfile string
      */
     static serializeToFlat(cells) {
-        // 1. Add the protective start marker
-        let out = '# %% [pynote-start]\n';
-        
-        cells.forEach((cell, index) => {
+        const serializedCells = cells.map(cell => {
             const data = typeof cell.toJSON === 'function' ? cell.toJSON() : cell;
             const type = data.type;
             
@@ -18,58 +15,41 @@ class NotebookFormatConverter {
             const metaStr = Object.keys(metaObj).length > 0 ? ` ${JSON.stringify(metaObj)}` : '';
             
             if (type === 'code') {
-                // Code cells perfectly preserve the author's internal newlines
-                out += `# %% [code]${metaStr}\n${data.content || ''}`;
+                return `# %% [code]${metaStr}\n${data.content || ''}`;
             } else {
                 const cleanContent = (data.content || '').replace(/\n+$/, '');
-                out += `# %% [${type}]${metaStr}\n"""\n${cleanContent}\n"""`;
-            }
-            
-            if (index < cells.length - 1) {
-                out += '\n\n';
+                return `# %% [${type}]${metaStr}\n"""\n${cleanContent}\n"""`;
             }
         });
         
-        // 2. Add the protective end marker so the browser can't strip trailing newlines
-        out += '\n# %% [pynote-end]';
-        return out; 
+        // Join the cells with exactly one blank line (\n\n) as a spacer
+        return serializedCells.join('\n\n');
     }
 
     /**
      * Converts a .pynote.py Flatfile string into a Native PyNote Object Array
      */
     static deserializeFromFlat(payload, options = {}) {
-        if (!payload) {
-            return [{ type: 'code', content: '', isLocked: false, isEditing: false }];
-        }
-
-        // --- NEW: THE EXTRACTION PHASE ---
-        const startMarker = '# %% [pynote-start]';
-        const endMarker = '# %% [pynote-end]';
-        
-        let safePayload = payload;
-        const startIndex = payload.indexOf(startMarker);
-        const endIndex = payload.lastIndexOf(endMarker);
-
-        // If the protective markers exist, slice out ONLY the guaranteed-safe content between them
-        if (startIndex > -1 && endIndex > -1 && endIndex > startIndex) {
-            safePayload = payload.substring(startIndex + startMarker.length, endIndex).replace(/^\r?\n/, '');
-        }
-
-        if (!safePayload.includes('# %%')) {
-            return [{ type: 'code', content: safePayload || '', isLocked: false, isEditing: false }];
+        if (!payload || !payload.includes('# %%')) {
+            return [{ type: 'code', content: payload || '', isLocked: false, isEditing: false }];
         }
         
-        const lines = safePayload.split(/\r?\n/);
+        const rawLines = payload.split(/\r?\n/);
         const cells = [];
         let currentCell = null;
         
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+        for (let i = 0; i < rawLines.length; i++) {
+            const line = rawLines[i];
             const markerMatch = line.match(/^#\s*%%(.*)$/);
             
             if (markerMatch) {
                 if (currentCell) {
+                    // We hit a new cell header. If the line immediately preceding this 
+                    // header is completely empty, it is our structural spacer. Pop it!
+                    if (currentCell.lines.length > 0 && currentCell.lines[currentCell.lines.length - 1] === '') {
+                        currentCell.lines.pop();
+                    }
+                    currentCell.content = currentCell.lines.join('\n');
                     cells.push(currentCell);
                 }
                 
@@ -96,36 +76,34 @@ class NotebookFormatConverter {
                     isLocked = true;
                 }
                 
-                currentCell = { type, content: '', isLocked, isHidden, isEditing: false };
+                // Track lines in an array instead of a messy string accumulator
+                currentCell = { type, lines: [], isLocked, isHidden, isEditing: false };
             } else {
                 if (!currentCell) {
-                    currentCell = { type: 'code', content: '', isLocked: false, isHidden: false, isEditing: false };
+                    currentCell = { type: 'code', lines: [], isLocked: false, isHidden: false, isEditing: false };
                 }
-                currentCell.content += line + '\n';
+                currentCell.lines.push(line);
             }
         }
         
-        if (currentCell) cells.push(currentCell);
+        if (currentCell) {
+            // The final cell has no cell header beneath it, so we don't pop anything.
+            // Whatever trailing newlines exist (or don't) are exactly what the user authored.
+            currentCell.content = currentCell.lines.join('\n');
+            cells.push(currentCell);
+        }
         
         // --- The Cleanup Phase ---
-        cells.forEach((c, index) => {
+        cells.forEach(c => {
             if (c.type === 'markdown' || c.type === 'text') {
                 c.content = c.content.replace(/^\s*"""\s*\n?/, '').replace(/\n?\s*"""\s*$/, '');
                 c.content = c.content.replace(/\n+$/, ''); 
-            } else if (c.type === 'code') {
-                if (index < cells.length - 1) {
-                    // Strip the \n\n visual separator from middle cells
-                    c.content = c.content.replace(/\n{1,2}$/, '');
-                } else {
-                    // Because the end marker protected our trailing whitespace from the browser,
-                    // we ONLY need to strip the ONE artificial newline added by the loop above.
-                    // Every intentional blank line the user typed will be perfectly preserved!
-                    c.content = c.content.replace(/\n$/, '');
-                }
             }
+            // Code cells require ZERO regex cleanup now! 
+            delete c.lines; 
         });
         
-        return cells.length ? cells : [{ type: 'code', content: safePayload }];
+        return cells.length ? cells : [{ type: 'code', content: payload }];
     }
 }
 

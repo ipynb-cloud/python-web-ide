@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PyNote Native Integration with Menu</title>
+    <title>PyNote Native Integration</title>
 
     <!-- 1. Tailwind & Fonts -->
     <link rel="stylesheet" href="tailwind-compiled.css">
@@ -14,7 +14,6 @@
     <link rel="stylesheet" href="https://python-web-ide.pages.dev/markdown-styles.css">
 
     <!-- 3. Third-Party Runtime Libraries -->
-    <!-- Make sure your locally built cm6.bundle.min.js is used here! -->
     <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -30,7 +29,7 @@
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-    <!-- 5. PyNote Core Scripts (Ensure these are in the same folder) -->
+    <!-- 5. PyNote Core Scripts -->
     <script src="notebook-format.js"></script>
     <script src="notebook-generic.js"></script>
     <script src="text-cells.js"></script>
@@ -50,24 +49,27 @@
 <body>
 
     <!-- Hidden File Input for Loading -->
-    <input type="file" id="file-upload" class="hidden" accept=".py,.txt,.json">
+    <input type="file" id="file-upload" class="hidden" accept=".py,.txt,.json,.ipynb">
 
     <!-- Native Tailwind Menu Bar -->
-<!-- Native Tailwind Menu Bar (Click-to-Open) -->
     <nav class="bg-slate-800 text-slate-200 flex items-center px-2 py-1 text-[13px] relative z-50 shadow-md font-sans select-none">
         <div class="font-bold px-3 text-white tracking-tight">PyNote</div>
         
         <!-- File Menu -->
         <div class="relative">
             <button id="menu-btn-file" class="menu-btn px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-pointer outline-none">File</button>
-            <div id="dropdown-file" class="dropdown-menu absolute left-0 mt-0 w-56 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden py-1">
+            <div id="dropdown-file" class="dropdown-menu absolute left-0 mt-0 w-64 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden py-1">
                 <a href="#" id="menu-file-load" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white">Open Notebook...</a>
                 <hr class="border-slate-200 my-1">
                 <a href="#" id="menu-file-save-flat" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex justify-between">
                     <span>Save as .pynote.py</span> <span class="text-slate-400 text-[10px] mt-0.5">Flatfile</span>
                 </a>
-                <a href="#" id="menu-file-save-json" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex justify-between">
-                    <span>Save as .json</span> <span class="text-slate-400 text-[10px] mt-0.5">Data</span>
+                <a href="#" id="menu-file-save-ipynb" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex justify-between">
+                    <span>Save as .ipynb</span> <span class="text-slate-400 text-[10px] mt-0.5">Jupyter</span>
+                </a>
+                <hr class="border-slate-200 my-1">
+                <a href="#" id="menu-file-save-moodle" class="block px-4 py-1.5 hover:bg-fuchsia-600 hover:text-white flex justify-between text-fuchsia-700 font-medium">
+                    <span>Export to Moodle XML</span>
                 </a>
             </div>
         </div>
@@ -90,7 +92,6 @@
 
     <!-- The DOM Container for PyNote -->
     <div class="demo-container">
-        <!-- This is where the notebook will mount -->
         <main class="p-4" id="pynote-mount-point"></main>
     </div>
 
@@ -129,19 +130,12 @@
 
         fileBtn.onclick = (e) => toggleMenu(fileBtn, fileDropdown, e);
         settingsBtn.onclick = (e) => toggleMenu(settingsBtn, settingsDropdown, e);
-
-        // Close menus when clicking anywhere else on the page
         document.addEventListener('click', () => closeAllMenus());
-        
-        // Prevent closing when clicking inside a dropdown itself
         document.querySelectorAll('.dropdown-menu').forEach(menu => {
-            menu.addEventListener('click', (e) => {
-                // If they clicked a link, we DO want it to close. 
-                if(e.target.tagName !== 'A') e.stopPropagation();
-            });
+            menu.addEventListener('click', (e) => { if(e.target.tagName !== 'A') e.stopPropagation(); });
         });
+
         // --- 1. CORE INITIALIZATION ---
-        
         let currentOptions = {
             showTopBar: true,
             kernelType: 'skulpt',
@@ -151,29 +145,21 @@
         };
 
         function initNotebook(payloadStr) {
-            // Re-instantiate over the existing DOM element
             window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
             const parsedCells = window.notebookCore.deserializeFromFlat(payloadStr);
             window.notebookCore.loadData(parsedCells);
-            
-            // Sync initial state to the textarea
             window.triggerHostSync(window.notebookCore.serializeToFlat());
         }
 
         // --- 2. DATA BINDING ---
-        
-        // When a user types in a cell, PyNote automatically calls this function.
         window.triggerHostSync = function(flatfilePayload) {
             document.getElementById('output-console').value = flatfilePayload;
-            
-            // Flash the autosave indicator
             const statusIndicator = document.getElementById('sync-status');
             statusIndicator.style.opacity = '1';
             setTimeout(() => statusIndicator.style.opacity = '0', 1500);
         };
 
-        // --- 3. MENU BAR LOGIC: FILES ---
-        
+        // --- 3. EXPORT LOGIC ---
         function downloadFile(filename, content) {
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
             const a = document.createElement('a');
@@ -190,17 +176,92 @@
             downloadFile('notebook.pynote.py', window.notebookCore.serializeToFlat());
         };
 
-        document.getElementById('menu-file-save-json').onclick = (e) => {
+        // Export to Jupyter .ipynb
+        document.getElementById('menu-file-save-ipynb').onclick = (e) => {
             e.preventDefault();
-            const jsonData = JSON.stringify(window.notebookCore.toJSON(), null, 2);
-            downloadFile('notebook.json', jsonData);
+            const pynoteCells = window.notebookCore.toJSON();
+            const jupyterCells = pynoteCells.map(c => {
+                const isCode = c.type === 'code';
+                // Jupyter expects arrays of strings with trailing newlines
+                const sourceArray = c.content ? c.content.split('\n').map((line, i, arr) => line + (i === arr.length - 1 ? '' : '\n')) : [];
+                return {
+                    cell_type: isCode ? 'code' : 'markdown',
+                    metadata: { pynote_locked: !!c.isLocked },
+                    source: sourceArray,
+                    ...(isCode ? { execution_count: null, outputs: [] } : {})
+                };
+            });
+
+            const ipynb = {
+                cells: jupyterCells,
+                metadata: { language_info: { name: "python" } },
+                nbformat: 4,
+                nbformat_minor: 5
+            };
+            
+            downloadFile('notebook.ipynb', JSON.stringify(ipynb, null, 2));
         };
 
-        const fileInput = document.getElementById('file-upload');
-        document.getElementById('menu-file-load').onclick = (e) => {
+        // Export to Moodle XML
+        document.getElementById('menu-file-save-moodle').onclick = (e) => {
             e.preventDefault();
-            fileInput.click();
+            const flatData = window.notebookCore.serializeToFlat();
+            
+            // Protect CDATA closing tags just in case they appear in student code
+            const safeFlatData = flatData.replace(/]]>/g, ']]]]><![CDATA[>');
+            
+            // Generate the exact HTML stub used to host PyNote
+            const htmlStub = `
+<div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 20px;">
+    <!-- REPLACE 'YOUR_DOMAIN' WITH YOUR ACTUAL HOSTING URL -->
+    <iframe id="pynote-iframe" src="https://YOUR_DOMAIN.com/widget-notebook.html" scrolling="no" style="width: 100%; border: none; display: block; transition: height 0.15s ease-out;"></iframe>
+</div>
+<textarea id="pynote-database" style="display:none;">${safeFlatData}</textarea>
+
+<script>
+    (function() {
+        const iframe = document.getElementById('pynote-iframe');
+        const db = document.getElementById('pynote-database');
+        
+        // Ensure Question Mode is ON by default for Moodle assignments!
+        const config = { showTopBar: true, kernelType: 'skulpt', autocompleteMode: 'custom', questionMode: true };
+        
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'REQUEST_CONTENT') {
+                iframe.contentWindow.postMessage({ type: 'LOAD_CONTENT', payload: db.value, config: config }, '*');
+            } else if (event.data.type === 'SYNC_HEIGHT') {
+                iframe.style.height = event.data.payload + 'px';
+            } else if (event.data.type === 'SYNC_CONTENT') {
+                db.value = event.data.payload;
+                iframe.contentWindow.postMessage({ type: 'ACK_CONTENT', msgId: event.data.msgId }, '*');
+            }
+        });
+    })();
+<\\/script>`.trim();
+
+            const safeHtmlStub = htmlStub.replace(/]]>/g, ']]]]><![CDATA[>');
+
+            // Wrap in Moodle XML Question Format (Essay type handles custom HTML well)
+            const moodleXml = `<?xml version="1.0" encoding="UTF-8"?>
+<quiz>
+  <question type="essay">
+    <name>
+      <text>PyNote Interactive Notebook</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[${safeHtmlStub}]]></text>
+    </questiontext>
+    <responseformat>noinline</responseformat>
+    <responserequired>0</responserequired>
+  </question>
+</quiz>`;
+
+            downloadFile('pynote-moodle-export.xml', moodleXml);
         };
+
+        // --- 4. IMPORT LOGIC ---
+        const fileInput = document.getElementById('file-upload');
+        document.getElementById('menu-file-load').onclick = (e) => { e.preventDefault(); fileInput.click(); };
 
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -211,11 +272,26 @@
                 const content = event.target.result;
                 let parsedCells;
                 
-                try {
-                    // See if it's a JSON export
-                    parsedCells = JSON.parse(content);
-                } catch (err) {
-                    // Otherwise parse as flatfile
+                // If it's a Jupyter Notebook (.ipynb)
+                if (file.name.endsWith('.ipynb')) {
+                    try {
+                        const ipynb = JSON.parse(content);
+                        parsedCells = ipynb.cells.map(c => {
+                            const type = c.cell_type === 'markdown' ? 'markdown' : 'code';
+                            const contentStr = Array.isArray(c.source) ? c.source.join('') : (c.source || '');
+                            return {
+                                type: type,
+                                content: contentStr.replace(/\\n+$/, ''), // Clean trailing Jupyer newlines
+                                isLocked: c.metadata && c.metadata.pynote_locked ? true : false,
+                                isEditing: false
+                            };
+                        });
+                    } catch (err) {
+                        alert("Invalid Jupyter Notebook format.");
+                        return;
+                    }
+                } else {
+                    // Otherwise parse as PyNote Flatfile
                     parsedCells = window.notebookCore.deserializeFromFlat(content);
                 }
                 
@@ -226,16 +302,11 @@
             reader.readAsText(file);
         });
 
-        // --- 4. MENU BAR LOGIC: SETTINGS ---
-
+        // --- 5. SETTINGS LOGIC ---
         function toggleConfiguration(settingKey) {
             const currentData = window.notebookCore.serializeToFlat();
             currentOptions[settingKey] = !currentOptions[settingKey];
-            
-            // Re-render the UI with new settings
             initNotebook(currentData);
-            
-            // Update the checkmarks in the menu
             document.getElementById('check-question').classList.toggle('hidden', !currentOptions.questionMode);
             document.getElementById('check-readonly').classList.toggle('hidden', !currentOptions.isReadOnly);
         }
@@ -243,21 +314,16 @@
         document.getElementById('menu-setting-question').onclick = (e) => { e.preventDefault(); toggleConfiguration('questionMode'); };
         document.getElementById('menu-setting-readonly').onclick = (e) => { e.preventDefault(); toggleConfiguration('isReadOnly'); };
 
-
-        // --- 5. BOOTSTRAP DEFAULT CONTENT ---
-        
+        // --- 6. BOOTSTRAP DEFAULT CONTENT ---
         const initialData = `# %% [markdown]
 """
 ### Welcome to PyNote! 🚀
-This demonstrates how to initialize PyNote as a standard JavaScript component without any iframes, complete with a native File/Settings menu.
+Try clicking **File > Save as .ipynb** and opening the downloaded file in Jupyter Lab or VS Code. It works flawlessly!
 """
 
 # %% [code]
-# Try editing this code. The flatfile string below will update automatically!
-print("PyNote is running natively!")
+print("PyNote Native Integration")
 `;
-
-        // Boot it up!
         initNotebook(initialData);
 
     </script>

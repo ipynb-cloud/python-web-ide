@@ -1,5 +1,5 @@
 const MathJaxHelper = {
-    queue: function(el, onComplete) {a
+    queue: function(el, onComplete) {
         if (window.MathJax && window.MathJax.typesetPromise) {
             window.MathJax.typesetPromise([el]).then(() => {
                 if(onComplete) onComplete();

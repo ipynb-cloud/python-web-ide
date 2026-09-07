@@ -1,11 +1,14 @@
-const MathJaxHelper = {
-    queue: function(el, onComplete) {
+window.MathJaxHelper = {
+    queue: function(el, onComplete, retries = 0) {
         if (window.MathJax && window.MathJax.typesetPromise) {
             window.MathJax.typesetPromise([el]).then(() => {
-                if(onComplete) onComplete();
-            }).catch(err => console.log("MathJax error:", err.message));
+                if (onComplete) onComplete();
+            }).catch(err => console.warn("MathJax error:", err));
+        } else if (retries < 10) {
+            setTimeout(() => this.queue(el, onComplete, retries + 1), 300);
         } else {
-            setTimeout(() => this.queue(el, onComplete), 500);
+            console.warn("MathJax unavailable; skipping LaTeX typesetting.");
+            if (onComplete) onComplete();
         }
     }
 };
@@ -49,7 +52,7 @@ class PyodideWorkerKernel {
         
         this.worker.postMessage({ 
             id: initId,
-            widgetId: this.widgetId, // Send Widget ID to secure namespace
+            widgetId: this.widgetId,
             action: 'INIT', 
             config: this.options 
         });
@@ -86,7 +89,7 @@ class PyodideWorkerKernel {
         wrap.className = 'inline-block bg-white my-2 p-2 rounded shadow-sm border border-slate-200'; 
         wrap.innerHTML = svgData;
         const svgEl = wrap.querySelector('svg');
-        if(svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
+        if (svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
         targetDiv.appendChild(wrap);
     }
 
@@ -94,14 +97,9 @@ class PyodideWorkerKernel {
         const { id, type, status, text, error, data } = msg;
 
         if (type === 'status') {
-            if (status === 'ready') {
-                this.isReady = true;
-                window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
-            }
-            if (status === 'error') {
-                this.isReady = false;
-                window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
-            }
+            if (status === 'ready') this.isReady = true;
+            if (status === 'error') this.isReady = false;
+            
             if (this.statusCallback) this.statusCallback(status);
             
             if (status === 'ready' && this.callbacks[id]) {
@@ -139,39 +137,27 @@ class PyodideWorkerKernel {
 
     execute(code, targetDiv) {
         return new Promise((resolve, reject) => {
-            if (!this.isReady) {
-                return reject("Kernel is not ready yet.");
-            }
-            
+            if (!this.isReady) return reject("Kernel is not ready yet.");
             const execId = this.generateId();
             this.callbacks[execId] = { resolve, reject };
             this.targetDivs[execId] = targetDiv;
             this.currentOutputCounts[execId] = 0;
-
-            this.worker.postMessage({
-                id: execId,
-                widgetId: this.widgetId, // Keep executions tied to this widget's namespace
-                action: 'EXECUTE',
-                code: code,
-                config: this.options
-            });
+            this.worker.postMessage({ id: execId, widgetId: this.widgetId, action: 'EXECUTE', code: code, config: this.options });
         });
     }
 
     destroy() {
-        if (this.worker && typeof this.worker.terminate === 'function') {
-            this.worker.terminate();
-        }
+        if (this.worker && typeof this.worker.terminate === 'function') this.worker.terminate();
         this.isReady = false;
-        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: false } }));
     }
 }
 
+// --- NEW: SKULPT KERNEL ADAPTER ---
 class SkulptKernel {
-    constructor(maxOutputChars = 50000) {
+    constructor(options = {}) {
         this.isReady = false;
         this.currentOutputDiv = null;
-        this.maxOutputChars = maxOutputChars;
+        this.maxOutputChars = options.maxOutputChars || 50000;
         this.currentOutputCount = 0;
         this.isKilled = false;
     }
@@ -180,7 +166,7 @@ class SkulptKernel {
         statusCallback('loading');
         
         if (typeof Sk === 'undefined') {
-            statusCallback('loading-packages');
+            statusCallback('packages');
             try {
                 await this.loadScript("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js");
                 await this.loadScript("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js");
@@ -193,28 +179,23 @@ class SkulptKernel {
         
         this.isReady = true;
         statusCallback('ready');
-        window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
     }
 
     loadScript(src) {
         return new Promise((resolve, reject) => {
             const s = document.createElement('script');
-            s.src = src;
-            s.onload = resolve;
-            s.onerror = reject;
+            s.src = src; s.onload = resolve; s.onerror = reject;
             document.head.appendChild(s);
         });
     }
 
     writeOutput(text, classes) {
         if (!this.currentOutputDiv) return;
-        
         this.currentOutputCount += text.length;
         if (this.currentOutputCount > this.maxOutputChars) {
             this.isKilled = true;
             throw new Error(`Output limit exceeded`);
         }
-        
         const span = document.createElement('span');
         span.className = classes;
         span.innerText = text; 
@@ -229,26 +210,27 @@ class SkulptKernel {
         Sk.configure({
             output: (text) => this.writeOutput(text, 'text-slate-700'),
             read: (x) => {
-                if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
-                    throw "File not found: '" + x + "'";
+                if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) throw "File not found: '" + x + "'";
                 return Sk.builtinFiles["files"][x];
             },
             __future__: Sk.python3,
             execLimit: 5000, 
             yieldLimit: 100,
-            timeoutMsg: () => "Execution stopped: Time limit (5s) exceeded. Do you have an infinite loop?"
+            timeoutMsg: () => "Execution stopped: Time limit (5s) exceeded."
         });
 
         try {
             await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, code, true));
         } catch (err) {
-            if (this.isKilled) {
-                throw new Error(`Execution stopped: Output exceeded maximum limit of ${this.maxOutputChars} characters.`);
-            }
+            if (this.isKilled) throw new Error(`Execution stopped: Output exceeded maximum limit.`);
             throw new Error(err.toString().replace(/<stdin>/g, "line"));
         } finally {
             this.currentOutputDiv = null;
         }
+    }
+
+    destroy() {
+        this.isReady = false;
     }
 }
 
@@ -308,28 +290,33 @@ class BaseNotebookCell extends HTMLElement {
         this.contentArea = document.createElement('div');
         this.contentArea.className = 'flex-1 relative flex flex-col min-w-0 p-0 box-border min-h-0';
         
+        const disableTypeChange = window.notebookCore && window.notebookCore.options && window.notebookCore.options.disableTypeChange;
+
         if (!this.isLocked && !isReadOnlyGlobal) {
             const toolbar = document.createElement('div');
             toolbar.className = 'cell-toolbar absolute z-40 flex items-center gap-1 bg-white/95 backdrop-blur-sm shadow-sm border border-slate-200 rounded-md px-1.5 py-0.5 opacity-0 group-hover/cell:opacity-100 transition-all text-xs';
 
-            const dropdownWrap = document.createElement('div');
-            dropdownWrap.className = 'relative flex items-center justify-center rounded hover:bg-slate-100 transition-colors text-slate-500 font-medium px-1 cursor-pointer';
-            dropdownWrap.innerHTML = `
-                <span>${this.cellType}</span>
-                <svg class="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                <select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Change Cell Type">
-                    <option value="code" ${this.cellType === 'code' ? 'selected' : ''}>code</option>
-                    <option value="markdown" ${this.cellType === 'markdown' ? 'selected' : ''}>markdown</option>
-                    <option value="text" ${this.cellType === 'text' ? 'selected' : ''}>text</option>
-                </select>
-            `;
-            dropdownWrap.querySelector('select').addEventListener('change', (e) => {
-                this.dispatchAction('cell-type-changed', { newType: e.target.value, content: this.content });
-            });
-            toolbar.appendChild(dropdownWrap);
+            if (!disableTypeChange) {
+                const dropdownWrap = document.createElement('div');
+                dropdownWrap.className = 'relative flex items-center justify-center rounded hover:bg-slate-100 transition-colors text-slate-500 font-medium px-1 cursor-pointer';
+                dropdownWrap.innerHTML = `
+                    <span>${this.cellType}</span>
+                    <svg class="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    <select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Change Cell Type">
+                        <option value="code" ${this.cellType === 'code' ? 'selected' : ''}>code</option>
+                        <option value="markdown" ${this.cellType === 'markdown' ? 'selected' : ''}>markdown</option>
+                        <option value="text" ${this.cellType === 'text' ? 'selected' : ''}>text</option>
+                    </select>
+                `;
+                dropdownWrap.querySelector('select').addEventListener('change', (e) => {
+                    this.dispatchAction('cell-type-changed', { newType: e.target.value, content: this.content });
+                });
+                toolbar.appendChild(dropdownWrap);
+            }
 
             const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 border-l border-slate-200 pl-1';
+            deleteBtn.className = 'text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 pl-1';
+            if (!disableTypeChange) deleteBtn.classList.add('border-l', 'border-slate-200');
             deleteBtn.title = 'delete cell';
             deleteBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
             deleteBtn.onclick = () => this.dispatchAction('cell-deleted');
@@ -364,15 +351,18 @@ class BaseNotebookCell extends HTMLElement {
         }
     }
 
-    mountContent(container) { /* abstract */ }
-    handleActionClick() { /* abstract */ }
-    refresh() { /* abstract */ }
+    mountContent(container) {}
+    handleActionClick() {}
+    refresh() {}
 
     updateActionButton(config) {
-        if (this.actionBtnElement && config) {
+        if (!this.actionBtnElement) return;
+        if (config) {
             this.actionBtnElement.classList.remove('hidden');
             this.actionBtnElement.title = config.title;
             this.actionBtnElement.innerHTML = config.icon;
+        } else {
+            this.actionBtnElement.classList.add('hidden');
         }
     }
 
@@ -383,7 +373,7 @@ class BaseNotebookCell extends HTMLElement {
             this.actionBtnElement.innerHTML = `<span class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>`;
         } else if (state === 'success') {
             this.actionBtnElement.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
-        } else {
+        } else if (config) {
             this.actionBtnElement.innerHTML = config.icon;
         }
     }
@@ -399,10 +389,10 @@ class NotebookCore {
         this.container = document.getElementById(containerId);
         
         const defaultConfig = {
-            widgetId: Math.random().toString(36).substring(2, 10), // Unique ID for this notebook
+            widgetId: Math.random().toString(36).substring(2, 10),
             isReadOnly: false,
             defaultCellType: 'code',
-            kernelType: 'pyodide', 
+            kernelType: 'pyodide', // Default to Pyodide
             kernelMode: 'local',   
             preloadMatplotlib: true,
             maxOutputChars: 50000, 
@@ -415,12 +405,15 @@ class NotebookCore {
             outputLineHeightPx: 21,
             autoClearOutputOnEdit: true,
             showTopBar: false,
+            lockAllMarkdown: false,
+            disableTypeChange: false,
             layout: 'inline'
         };
         
         this.options = { ...defaultConfig, ...options };
         this.isReadOnly = this.options.isReadOnly;
         this.defaultCellType = this.options.defaultCellType;
+        this.activeCodeEditor = null;
 
         const topInserter = document.getElementById('top-inserter');
         if (topInserter) {
@@ -432,20 +425,38 @@ class NotebookCore {
             }
         }
         
-        if (this.options.kernelType === 'skulpt') {
-            this.kernel = new SkulptKernel(this.options.maxOutputChars);
-        } else {
-            this.kernel = new PyodideWorkerKernel(this.options);
-        }
-        
-        this.kernel.init((status) => this.updateKernelStatus(status));
-        
+        // Sync the HTML selector to match the incoming configuration
+        const selector = document.getElementById('kernel-selector');
+        if (selector) selector.value = this.options.kernelType;
+
+        this.initKernel();
         this.setupEventListeners();
 
         document.fonts.ready.then(() => {
-            Array.from(this.container.children).forEach(cell => { if(cell.refresh) cell.refresh(); });
+            Array.from(this.container.children).forEach(cell => { if (cell.refresh) cell.refresh(); });
             if (typeof sendHeight === 'function') sendHeight();
         });
+    }
+
+    // --- NEW: Dynamic Kernel Initialization ---
+    initKernel() {
+        if (this.options.kernelType === 'skulpt') {
+            this.kernel = new SkulptKernel(this.options);
+        } else {
+            this.kernel = new PyodideWorkerKernel(this.options);
+        }
+        this.kernel.init((status) => this.updateKernelStatus(status));
+    }
+
+    // --- NEW: Live Switcher Logic ---
+    switchKernel(newType) {
+        if (this.options.kernelType === newType) return;
+        this.options.kernelType = newType;
+        
+        const selector = document.getElementById('kernel-selector');
+        if (selector) selector.value = newType;
+
+        this.restartKernel();
     }
 
     setupEventListeners() {
@@ -468,7 +479,7 @@ class NotebookCore {
             const newCell = this.createCellElement({ type: 'code', content: '' });
             el.insertAdjacentElement('afterend', newCell);
             this.syncToServer();
-            setTimeout(() => newCell.focusCell(), 50);
+            setTimeout(() => { if (newCell.focusCell) newCell.focusCell(); }, 50);
         });
 
         this.container.addEventListener('cell-type-changed', (e) => {
@@ -483,17 +494,19 @@ class NotebookCore {
             this.container.insertBefore(newCell, oldEl);
             oldEl.remove();
             this.syncToServer();
-            setTimeout(() => newCell.focusCell(), 50);
+            setTimeout(() => { if (newCell.focusCell) newCell.focusCell(); }, 50);
         });
     }
 
     updateKernelStatus(status) {
-        const el = document.getElementById('kernel-status');
+        // Target the internal indicator element inside our new wrapper
+        const el = document.getElementById('kernel-status-indicator');
         if (!el) return;
-        if (status === 'loading') el.innerHTML = `Loading Kernel... <span class="w-3 h-3 ml-1 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin inline-block"></span>`;
-        else if (status === 'loading-packages') el.innerHTML = `Loading Packages...`;
-        else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block mr-1"></span> Ready <span class="ml-1 text-[9px] opacity-60">(${this.options.kernelType})</span>`;
-        else el.innerHTML = `<span class="h-2 w-2 rounded-full bg-red-500 inline-block mr-1"></span> Error`;
+
+        if (status === 'loading') el.innerHTML = `Loading... <span class="w-3 h-3 ml-1 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin inline-block"></span>`;
+        else if (status === 'packages') el.innerHTML = `Packages... <span class="w-3 h-3 ml-1 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin inline-block"></span>`;
+        else if (status === 'ready') el.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 inline-block"></span> Ready`;
+        else el.innerHTML = `<span class="h-2 w-2 rounded-full bg-red-500 inline-block"></span> Error`;
         
         if (status === 'ready') {
             window.dispatchEvent(new CustomEvent('kernel-status-changed', { detail: { isReady: true } }));
@@ -515,12 +528,8 @@ class NotebookCore {
             this.kernel.destroy();
         }
 
-        if (this.options.kernelType === 'skulpt') {
-            this.kernel = new SkulptKernel(this.options.maxOutputChars);
-        } else {
-            this.kernel = new PyodideWorkerKernel(this.options);
-        }
-        await this.kernel.init((status) => this.updateKernelStatus(status));
+        // Re-initialize using the currently selected type
+        this.initKernel();
     }
 
     loadData(cellDataArray) {
@@ -557,32 +566,33 @@ class NotebookCore {
         }
         
         this.syncToServer();
-        setTimeout(() => newCell.focusCell(), 100);
+        setTimeout(() => { if (newCell.focusCell) newCell.focusCell(); }, 100);
     }
 
     async runAll() {
         const cells = Array.from(this.container.children);
         for (const cell of cells) {
             if (cell.tagName.toLowerCase() === 'notebook-code-cell') {
-                cell.refresh();
-                await cell.handleActionClick();
+                if (cell.refresh) cell.refresh();
+                if (cell.handleActionClick) await cell.handleActionClick();
             }
         }
     }
 
     setupDragAndDrop() {
-        if (this.isReadOnly || this.sortable) return;
+        if (this.isReadOnly || this.sortable || typeof Sortable === 'undefined') return;
         this.sortable = new Sortable(this.container, {
             handle: '.drag-handle',
             animation: 150,
             filter: '[is-locked]', 
             onEnd: () => {
                 const cells = Array.from(this.container.children);
-                cells.forEach(cell => { if(cell.refresh) cell.refresh(); }); 
+                cells.forEach(cell => { if (cell.refresh) cell.refresh(); }); 
                 this.syncToServer();
             },
         });
     }
+
     serializeToFlat() {
         const cells = this.toJSON();
         return window.NotebookFormatConverter.serializeToFlat(cells);
@@ -592,9 +602,7 @@ class NotebookCore {
         return window.NotebookFormatConverter.deserializeFromFlat(payload, this.options);
     }
 
-    toJSON() { 
-        return Array.from(this.container.children).map(c => c.toJSON()); 
-    }
+    toJSON() { return Array.from(this.container.children).map(c => c.toJSON()); }
 
     syncToServer() {
         if (typeof window.triggerHostSync === 'function') {

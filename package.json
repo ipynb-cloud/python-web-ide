@@ -15,10 +15,23 @@
     "@codemirror/state": "^6.4.1",
     "@codemirror/view": "^6.33.0",
     "@tailwindcss/cli": "^4.3.3",
-    "codemirror": "^6.0.1",
-    "tailwindcss": "^4.3.3"
+    "codemirror": "^6.0.1"
   },
   "devDependencies": {
-    "esbuild": "^0.23.1"
-  }
+    "esbuild": "^0.23.1",
+    "tailwindcss": "^4.3.3"
+  },
+  "main": "python-web-ide.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ipynb-cloud/python-web-ide.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ipynb-cloud/python-web-ide/issues"
+  },
+  "homepage": "https://github.com/ipynb-cloud/python-web-ide#readme"
 }

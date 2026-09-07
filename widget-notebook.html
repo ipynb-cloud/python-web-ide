@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modular Notebook IDE</title>
+    <title>PyNote Widget</title>
 
     <!-- Tailwind & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -27,9 +27,6 @@
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-    <!-- Pyodide -->
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js"></script>
-
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #ffffff; margin: 0; overflow-y: hidden; overflow-x: hidden; }
         textarea { resize: none; overflow: hidden; }
@@ -39,8 +36,9 @@
         .markdown-body h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em; }
         .markdown-body h2 { font-size: 1.4em; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em;}
         .markdown-body p { margin-bottom: 1em; line-height: 1.6; }
-        .markdown-body code { background-color: #f1f5f9; padding: 0.2em 0.4em; border-radius: 3px; font-family: 'Fira Code', monospace; font-size: 0.9em; }
-        .markdown-body pre { background-color: #f8fafc; padding: 1em; border: 1px solid #e2e8f0; border-radius: 0.375rem; overflow-x: auto; margin-bottom: 1em; }
+        
+        /* Ensure standard code blocks look nice, but ignore CM6 internal code blocks */
+        .markdown-body code:not(.cm-content code) { background-color: #f1f5f9; padding: 0.2em 0.4em; border-radius: 3px; font-family: 'Fira Code', monospace; font-size: 0.9em; }
         .markdown-body ul { list-style-type: disc; padding-left: 2em; margin-bottom: 1em; }
 
         /* Custom Element Tags styling */
@@ -85,7 +83,7 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <!-- NEW: Restart Kernel Button -->
+            <!-- Restart Kernel Button -->
             <button onclick="notebookCore.restartKernel()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-sm" title="Restart Kernel">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 Restart
@@ -99,17 +97,35 @@
 
     <main class="p-4 flex flex-col w-full box-border" id="main-content">
         <div class="w-full flex flex-col relative box-border">
-            
             <div id="top-inserter" class="h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 relative cursor-pointer w-4/5 mx-auto mb-1.5 z-10 flex items-center justify-center group/inserter" title="Add cell at top">
                 <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors"></div></div>
                 <div class="relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white shadow-sm opacity-0 group-hover/inserter:opacity-100 transition-opacity duration-300 delay-0 group-hover/inserter:delay-250 mx-auto border-2 border-white">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
                 </div>
             </div>
-            
             <div id="notebook-container" class="pb-2 relative flex flex-col w-full box-border"></div>
         </div>
     </main>
+
+    <!-- Global Helpers -->
+    <script>
+        // Bulletproof MathJax Helper to prevent iframe crashes
+        window.MathJaxHelper = {
+            queue: function(el, onComplete) {
+                if (window.MathJax && window.MathJax.typesetPromise) {
+                    window.MathJax.typesetPromise([el]).then(() => {
+                        if (onComplete) onComplete();
+                    }).catch(err => console.warn("MathJax error:", err));
+                } else if (!this._retryCount || this._retryCount < 10) {
+                    this._retryCount = (this._retryCount || 0) + 1;
+                    setTimeout(() => window.MathJaxHelper.queue(el, onComplete), 500);
+                } else {
+                    console.warn("MathJax failed to load in this environment. Skipping render.");
+                    if (onComplete) onComplete();
+                }
+            }
+        };
+    </script>
 
     <!-- Notebook Architecture Scripts -->
     <script src="notebook-generic.js"></script>
@@ -141,7 +157,7 @@
         }
 
         function unlockWidget() { 
-            document.body.style.overflow = 'hidden'; // Keep body hidden so it never wiggles
+            document.body.style.overflow = 'hidden'; 
             errorModal.style.display = 'none'; 
             reconnectBtn.querySelector('#btn-spinner').classList.add('hidden'); 
             reconnectBtn.disabled = false; 
@@ -199,10 +215,9 @@
                     document.body.classList.add('layout-edge');
                 }
                 
-                // Pass the ENTIRE config object into the core. It handles everything now.
+                // Pass the ENTIRE config object into the core to handle read-only, etc.
                 window.notebookCore = new NotebookCore('notebook-container', config);
                 
-                // Parse the incoming flat text and load it into the notebook UI
                 const cells = window.notebookCore.deserializeFromFlat(event.data.payload);
                 window.notebookCore.loadData(cells);
                 

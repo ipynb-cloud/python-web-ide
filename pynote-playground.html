@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PyNote Standalone Environment</title>
+    <title>PyNote Native Integration with Menu</title>
 
     <!-- 1. Tailwind & Fonts -->
     <link rel="stylesheet" href="tailwind-compiled.css">
@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://python-web-ide.pages.dev/markdown-styles.css">
 
     <!-- 3. Third-Party Runtime Libraries -->
-    <!-- Ensure your newly built cm6.bundle.min.js with the autocomplete logic is uploaded here! -->
+    <!-- Make sure your locally built cm6.bundle.min.js is used here! -->
     <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -26,224 +26,117 @@
           tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
           startup: { typeset: false }
         };
-        if (typeof marked !== 'undefined' && marked.setOptions) {
-            marked.setOptions({ breaks: true });
-        }
+        if (typeof marked !== 'undefined' && marked.setOptions) marked.setOptions({ breaks: true });
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-</head>
-<body class="text-slate-800 flex flex-col transition-none layout-inline bg-white">
 
-    <!-- Connection / Status Overlay -->
-    <div id="error-modal" class="fixed inset-0 bg-white/80 z-50 flex-col items-center justify-center hidden">
-        <div class="bg-white p-6 rounded-lg shadow-xl border border-slate-200 text-center">
-            <p class="font-bold text-red-500 mb-4" id="modal-msg">Widget disconnected</p>
-            <button id="reconnect-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md font-bold shadow-sm hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 mx-auto">
-                <span id="btn-text">Try to connect</span>
-                <span id="btn-spinner" class="hidden w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-            </button>
-        </div>
-    </div>
-
-    <!-- Main Header -->
-    <header id="main-header" class="hidden bg-white border-b border-slate-200 px-4 py-2 flex justify-between items-center shrink-0 z-40 sticky top-0 shadow-sm">
-        <div class="flex items-center gap-3">
-            <h1 class="text-base font-semibold tracking-tight">PyNote</h1>
-            
-            <div id="kernel-status-wrapper" class="ml-4 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-md tracking-wider border border-slate-200 shadow-inner">
-                <div id="kernel-status-indicator" class="flex items-center gap-1.5 uppercase min-w-[70px]">
-                    Starting...
-                </div>
-                <div class="w-px h-3 bg-slate-300 mx-0.5"></div>
-                <select id="kernel-selector" onchange="notebookCore.switchKernel(this.value)" class="bg-transparent border-none outline-none cursor-pointer font-bold text-slate-600 hover:text-slate-900 uppercase text-[10px] text-center appearance-none px-1">
-                    <option value="pyodide">Pyodide</option>
-                    <option value="skulpt">Skulpt</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="flex items-center gap-2">
-            <button onclick="notebookCore.restartKernel()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-sm" title="Restart Kernel">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Restart
-            </button>
-            <div class="w-px h-4 bg-slate-300 mx-1"></div>
-            <button id="run-all-btn" onclick="notebookCore.runAll()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                Run All
-            </button>
-        </div>
-    </header>
-
-    <!-- Notebook Content -->
-    <main class="p-4 flex flex-col w-full box-border max-w-5xl mx-auto" id="main-content">
-        <div class="w-full flex flex-col relative box-border">
-            <div id="top-inserter" class="h-3 group-hover/inserter:h-6 transition-all duration-300 delay-0 group-hover/inserter:delay-250 relative cursor-pointer w-4/5 mx-auto mb-1.5 z-10 flex items-center justify-center group/inserter" title="Add cell at top">
-                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center"><div class="h-px w-full bg-transparent group-hover/inserter:bg-blue-400 transition-colors"></div></div>
-                <div class="relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white shadow-sm opacity-0 group-hover/inserter:opacity-100 transition-opacity duration-300 delay-0 group-hover/inserter:delay-250 mx-auto border-2 border-white">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
-                </div>
-            </div>
-            <div id="notebook-container" class="pb-2 relative flex flex-col w-full box-border"></div>
-        </div>
-    </main>
-
-    <!-- Configuration for Standalone Bootstrapper -->
-    <script type="application/json" class="widget-config" id="pynote-config">
-        {
-            "showTopBar": true,
-            "kernelType": "skulpt",
-            "autocompleteMode": "custom",
-            "questionMode": true,
-            "disableInsertAll": false 
-        }
-    </script>
-
-    <!-- Notebook Architecture (ORDER MATTERS) -->
+    <!-- 5. PyNote Core Scripts (Ensure these are in the same folder) -->
     <script src="notebook-format.js"></script>
     <script src="notebook-generic.js"></script>
     <script src="text-cells.js"></script>
     <script src="markdown-cells.js"></script>
     <script src="code-cells.js"></script>
-
-    <!-- Plugins -->
     <script src="markdown-widget-registry.js"></script>
     <script src="plugin-csv.js"></script>
     <script src="markdown-cells-embedded-code.js"></script>
+    
+    <style>
+        body { background: #f8fafc; font-family: 'Inter', sans-serif; margin: 0; }
+        .demo-container { max-width: 900px; margin: 40px auto; background: white; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); overflow: hidden; }
+        .data-output { max-width: 900px; margin: 20px auto; }
+        .data-output textarea { width: 100%; height: 200px; padding: 10px; font-family: 'Fira Code', monospace; font-size: 13px; background: #1e1e1e; color: #d4d4d4; border-radius: 6px; resize: vertical; }
+    </style>
+</head>
+<body>
 
-    <!-- Bootstrap & Host Sync -->
+    <!-- Hidden File Input for Loading -->
+    <input type="file" id="file-upload" class="hidden" accept=".py,.txt,.json">
+
+    <!-- Native Tailwind Menu Bar -->
+    <nav class="bg-slate-800 text-slate-200 flex items-center px-2 py-1 text-[13px] relative z-50 shadow-md font-sans select-none">
+        <div class="font-bold px-3 text-white tracking-tight">PyNote</div>
+        
+        <!-- File Menu -->
+        <div class="relative group">
+            <button class="px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-default outline-none">File</button>
+            <div class="absolute left-0 mt-0 w-56 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden group-hover:block py-1">
+                <a href="#" id="menu-file-load" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white">Open Notebook...</a>
+                <hr class="border-slate-200 my-1">
+                <a href="#" id="menu-file-save-flat" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex justify-between">
+                    <span>Save as .pynote.py</span> <span class="text-slate-400 text-[10px] mt-0.5">Flatfile</span>
+                </a>
+                <a href="#" id="menu-file-save-json" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex justify-between">
+                    <span>Save as .json</span> <span class="text-slate-400 text-[10px] mt-0.5">Data</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Settings Menu -->
+        <div class="relative group">
+            <button class="px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-default outline-none">Settings</button>
+            <div class="absolute left-0 mt-0 w-64 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden group-hover:block py-1">
+                <a href="#" id="menu-setting-question" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex items-center justify-between">
+                    <span>Question Mode (Lock UI)</span>
+                    <span id="check-question" class="text-blue-500 font-bold hidden">✓</span>
+                </a>
+                <a href="#" id="menu-setting-readonly" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex items-center justify-between">
+                    <span>Read Only</span>
+                    <span id="check-readonly" class="text-blue-500 font-bold hidden">✓</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- The DOM Container for PyNote -->
+    <div class="demo-container">
+        <!-- This is where the notebook will mount -->
+        <main class="p-4" id="pynote-mount-point"></main>
+    </div>
+
+    <!-- For demonstration: displaying the output data -->
+    <div class="data-output">
+        <div class="flex justify-between items-end mb-2">
+            <p class="text-sm text-slate-500 font-bold">Live Server Payload Output:</p>
+            <span id="sync-status" class="text-xs font-bold text-emerald-500 opacity-0 transition-opacity duration-300">Autosaved!</span>
+        </div>
+        <textarea id="output-console" readonly></textarea>
+    </div>
+
     <script>
-        const errorModal = document.getElementById('error-modal');
-        const reconnectBtn = document.getElementById('reconnect-btn');
-        let pendingSyncId = null, syncTimeout = null, initTimeout = null;
-        let lastSentHeight = 0;
-        let isStandaloneFallback = false;
-
-        function hashCode(str) {
-            let hash = 0;
-            for (let i = 0, len = str.length; i < len; i++) {
-                hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-            }
-            return hash.toString();
-        }
-
-        function lockWidget(message = "Widget disconnected") { 
-            if (isStandaloneFallback) return;
-            document.getElementById('modal-msg').innerText = message;
-            document.body.style.overflow = 'hidden';
-            errorModal.style.display = 'flex'; 
-        }
-
-        function unlockWidget() { 
-            document.body.style.overflow = 'hidden'; 
-            errorModal.style.display = 'none'; 
-            if(reconnectBtn) {
-                reconnectBtn.querySelector('#btn-spinner').classList.add('hidden'); 
-                reconnectBtn.disabled = false; 
-                reconnectBtn.querySelector('#btn-text').innerText = 'Try to connect'; 
-            }
-        }
-
-        function sendHeight() {
-            const mainContent = document.getElementById('main-content');
-            const header = document.getElementById('main-header');
-            if (!mainContent || isStandaloneFallback) return;
-
-            const headerHeight = (header && !header.classList.contains('hidden')) ? header.scrollHeight : 0;
-            const contentHeight = mainContent.scrollHeight; 
-            const totalHeight = headerHeight + contentHeight;
-
-            if (Math.abs(totalHeight - lastSentHeight) > 2) {
-                lastSentHeight = totalHeight;
-                window.parent.postMessage({ type: 'SYNC_HEIGHT', payload: Math.max(totalHeight, 150) }, '*');
-            }
-        }
-
-        window.triggerHostSync = function(contentString) {
-            if (isStandaloneFallback) {
-                // In standalone mode, we just print the saved output to the console for debugging!
-                console.log("Notebook Saved! Flatfile Output:\n\n" + contentString);
-                return;
-            }
-            
-            pendingSyncId = Date.now().toString() + Math.random().toString();
-            window.parent.postMessage({ type: 'SYNC_CONTENT', payload: contentString, hash: hashCode(contentString), msgId: pendingSyncId }, '*');
-            
-            clearTimeout(syncTimeout);
-            syncTimeout = setTimeout(() => lockWidget("Failed to save changes to host."), 2000);
-            
-            window.requestAnimationFrame(sendHeight);
+        // --- 1. CORE INITIALIZATION ---
+        
+        let currentOptions = {
+            showTopBar: true,
+            kernelType: 'skulpt',
+            autocompleteMode: 'custom',
+            questionMode: false,
+            isReadOnly: false
         };
 
-        if (reconnectBtn) {
-            reconnectBtn.addEventListener('click', () => {
-                reconnectBtn.querySelector('#btn-spinner').classList.remove('hidden');
-                reconnectBtn.querySelector('#btn-text').innerText = 'Connecting...';
-                reconnectBtn.disabled = true;
-                window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
-                syncTimeout = setTimeout(() => { unlockWidget(); lockWidget(); }, 2000);
-            });
+        function initNotebook(payloadStr) {
+            // Re-instantiate over the existing DOM element
+            window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
+            const parsedCells = window.notebookCore.deserializeFromFlat(payloadStr);
+            window.notebookCore.loadData(parsedCells);
+            
+            // Sync initial state to the textarea
+            window.triggerHostSync(window.notebookCore.serializeToFlat());
         }
 
-        // --- THE BOOTSTRAPPER ---
-        window.addEventListener('message', (event) => {
-            if (event.data.type === 'LOAD_CONTENT') {
-                clearTimeout(initTimeout); 
-                isStandaloneFallback = false;
-                
-                const config = event.data.config || {};
-                if (config.showTopBar) document.getElementById('main-header').classList.remove('hidden');
-                if (config.layout === 'edge') {
-                    document.body.classList.remove('layout-inline');
-                    document.body.classList.add('layout-edge');
-                }
-                
-                window.notebookCore = new NotebookCore('notebook-container', config);
-                const cells = window.notebookCore.deserializeFromFlat(event.data.payload);
-                window.notebookCore.loadData(cells);
-                
-                unlockWidget();
-                clearTimeout(syncTimeout);
-                setTimeout(sendHeight, 300);
-
-            } else if (event.data.type === 'ACK_CONTENT' && event.data.msgId === pendingSyncId) {
-                clearTimeout(syncTimeout); 
-                unlockWidget();
-            }
-        });
-
-        // Request content from Moodle iframe parent
-        window.parent.postMessage({ type: 'REQUEST_CONTENT' }, '*');
+        // --- 2. DATA BINDING ---
         
-        // If Moodle doesn't respond in 1.5 seconds, boot in Standalone Mode!
-        initTimeout = setTimeout(() => {
-            console.log("No host detected. Booting in Standalone Fallback mode.");
-            isStandaloneFallback = true;
+        // When a user types in a cell, PyNote automatically calls this function.
+        window.triggerHostSync = function(flatfilePayload) {
+            document.getElementById('output-console').value = flatfilePayload;
             
-            // 1. Parse local configuration
-            const configEl = document.getElementById('pynote-config');
-            let config = {};
-            try { config = JSON.parse(configEl.textContent); } catch (e) { console.warn("Invalid JSON config"); }
-            
-            if (config.showTopBar) document.getElementById('main-header').classList.remove('hidden');
-            
-            // 2. Initialize Core
-            window.notebookCore = new NotebookCore('notebook-container', config);
-            
-            // 3. Load Sample Payload
-            const samplePayload = `# %% [code]
+            // Flash the autosave indicator
+            const statusIndicator = document.getElementById('sync-status');
+            statusIndicator.style.opacity = '1';
+            setTimeout(() => statusIndicator.style.opacity = '0', 1500);
+        };
 
-
-`;
-            const fallbackCells = window.notebookCore.deserializeFromFlat(samplePayload);
-            window.notebookCore.loadData(fallbackCells);
-            unlockWidget();
-        }, 1500);
-
-        new ResizeObserver(() => {
-            window.requestAnimationFrame(sendHeight);
-        }).observe(document.body);
-
-// --- 1. FILE DOWNLOADING ---
+        // --- 3. MENU BAR LOGIC: FILES ---
+        
         function downloadFile(filename, content) {
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
             const a = document.createElement('a');
@@ -257,23 +150,19 @@
 
         document.getElementById('menu-file-save-flat').onclick = (e) => {
             e.preventDefault();
-            // Leverages your beautiful Flatfile serialization!
-            const flatData = window.notebookCore.serializeToFlat();
-            downloadFile('notebook.pynote.py', flatData);
+            downloadFile('notebook.pynote.py', window.notebookCore.serializeToFlat());
         };
 
         document.getElementById('menu-file-save-json').onclick = (e) => {
             e.preventDefault();
-            // Native array export
             const jsonData = JSON.stringify(window.notebookCore.toJSON(), null, 2);
             downloadFile('notebook.json', jsonData);
         };
 
-        // --- 2. FILE UPLOADING ---
         const fileInput = document.getElementById('file-upload');
         document.getElementById('menu-file-load').onclick = (e) => {
             e.preventDefault();
-            fileInput.click(); // Trigger native OS file picker
+            fileInput.click();
         };
 
         fileInput.addEventListener('change', (e) => {
@@ -285,42 +174,55 @@
                 const content = event.target.result;
                 let parsedCells;
                 
-                // Try JSON first, fallback to Flatfile parsing
                 try {
+                    // See if it's a JSON export
                     parsedCells = JSON.parse(content);
                 } catch (err) {
+                    // Otherwise parse as flatfile
                     parsedCells = window.notebookCore.deserializeFromFlat(content);
                 }
                 
                 window.notebookCore.loadData(parsedCells);
-                fileInput.value = ''; // Reset input so the same file can be uploaded again
+                window.triggerHostSync(window.notebookCore.serializeToFlat());
+                fileInput.value = ''; 
             };
             reader.readAsText(file);
         });
 
-        // --- 3. CONFIGURATION TOGGLES ---
-        // To change core layout configs on the fly, we re-instantiate the notebook 
-        // on the same div, passing the existing data back in.
+        // --- 4. MENU BAR LOGIC: SETTINGS ---
+
         function toggleConfiguration(settingKey) {
-            // Grab current state
-            const currentData = window.notebookCore.toJSON();
-            const currentOptions = window.notebookCore.options;
-            
-            // Toggle the setting
+            const currentData = window.notebookCore.serializeToFlat();
             currentOptions[settingKey] = !currentOptions[settingKey];
             
-            // Re-instantiate over the existing DOM element
-            window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
-            window.notebookCore.loadData(currentData);
+            // Re-render the UI with new settings
+            initNotebook(currentData);
             
-            // Update menu checkmarks
+            // Update the checkmarks in the menu
             document.getElementById('check-question').classList.toggle('hidden', !currentOptions.questionMode);
             document.getElementById('check-readonly').classList.toggle('hidden', !currentOptions.isReadOnly);
         }
 
         document.getElementById('menu-setting-question').onclick = (e) => { e.preventDefault(); toggleConfiguration('questionMode'); };
         document.getElementById('menu-setting-readonly').onclick = (e) => { e.preventDefault(); toggleConfiguration('isReadOnly'); };
+
+
+        // --- 5. BOOTSTRAP DEFAULT CONTENT ---
         
+        const initialData = `# %% [markdown]
+"""
+### Welcome to PyNote! 🚀
+This demonstrates how to initialize PyNote as a standard JavaScript component without any iframes, complete with a native File/Settings menu.
+"""
+
+# %% [code]
+# Try editing this code. The flatfile string below will update automatically!
+print("PyNote is running natively!")
+`;
+
+        // Boot it up!
+        initNotebook(initialData);
+
     </script>
 </body>
 </html>

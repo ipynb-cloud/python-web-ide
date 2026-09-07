@@ -22,10 +22,9 @@ class CodeCellElement extends window.BaseNotebookCell {
 
     mountContent(container) {
         this.editorWrap = document.createElement('div');
-        this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] bg-slate-50/50 rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90' : ''}`;
+        this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] transition-all border border-transparent rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90 bg-slate-100' : 'bg-slate-50'}`;
         container.appendChild(this.editorWrap);
         
-        // Note: Shift+Enter execution is still handled outside the editor to ensure it always fires
         this.editorWrap.addEventListener('keydown', (e) => {
             if (e.shiftKey && e.key === 'Enter') {
                 e.preventDefault();
@@ -44,19 +43,14 @@ class CodeCellElement extends window.BaseNotebookCell {
 
             const customExtensions = [];
             
-            // 1. Core IDE Features (Syntax highlighting styles, bracket matching, line numbers, etc.)
             if (cm6.basicSetup) customExtensions.push(cm6.basicSetup);
 
-            // 2. Python Language Grammar
             if (typeof cm6.python === 'function') {
                 customExtensions.push(cm6.python());
             } else if (cm6.langPython && typeof cm6.langPython.python === 'function') {
                 customExtensions.push(cm6.langPython.python());
-            } else {
-                console.warn("PyNote: cm6.python extension missing from bundle.");
             }
 
-            // 3. Python Indentation Rules (4 Spaces)
             if (cm6.language && cm6.language.indentUnit) {
                 customExtensions.push(cm6.language.indentUnit.of("    "));
             }
@@ -64,7 +58,6 @@ class CodeCellElement extends window.BaseNotebookCell {
                 customExtensions.push(cm6.state.EditorState.tabSize.of(4));
             }
 
-            // 4. Tab Key Binding (Override default accessibility tab-out to insert spaces)
             if (cm6.keymap && cm6.commands && cm6.commands.indentMore && cm6.commands.indentLess) {
                 customExtensions.push(cm6.keymap.of([
                     { key: "Tab", run: cm6.commands.indentMore },
@@ -72,7 +65,6 @@ class CodeCellElement extends window.BaseNotebookCell {
                 ]));
             }
 
-            // Lock the code editor entirely if this cell is locked 
             if (this.isLocked) {
                 const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
                 if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
@@ -84,8 +76,17 @@ class CodeCellElement extends window.BaseNotebookCell {
             const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
             if (EditorView && EditorView.updateListener) {
                 customExtensions.push(EditorView.updateListener.of((update) => {
+                    
+                    // NATIVE CM6 FOCUS TRACKING REVERTED FROM YOUR OLD CODE
                     if (update.focusChanged && update.view.hasFocus) {
-                        if (window.notebookCore) window.notebookCore.activeCodeEditor = update.view;
+                        if (window.notebookCore && !this.isLocked) {
+                            window.notebookCore.activeCodeEditor = update.view;
+                            
+                            document.querySelectorAll('notebook-code-cell .cm-wrapper').forEach(el => {
+                                el.classList.remove('border-blue-400', 'ring-2', 'ring-blue-100');
+                            });
+                            this.editorWrap.classList.add('border-blue-400', 'ring-2', 'ring-blue-100');
+                        }
                     }
                     
                     if (update.focusChanged && !update.view.hasFocus) {
@@ -278,26 +279,19 @@ class CodeCellElement extends window.BaseNotebookCell {
         
         this.content = this.editorView ? this.editorView.state.doc.toString() : this.content;
         
-        // 1. Immediately update UI to running state and clear output
         this.setButtonState('running');
         this.outputWrapper.classList.remove('hidden');
         this.outputWrapper.classList.add('flex');
         this.outputContent.innerHTML = '';
         this.dispatchAction('cell-height-changed');
         
-        // 2. Yield to browser so the spinner actually paints before blocking thread
         await new Promise(resolve => setTimeout(resolve, 50));
         
         try {
-            // 3. Execute Kernel
             await window.notebookCore.kernel.execute(this.content, this.outputContent);
-            
-            // 4. Success State
             this.setButtonState('success');
             setTimeout(() => this.setButtonState('default'), 2000);
-            
         } catch (err) {
-            // 5. Error State
             this.outputContent.innerHTML += `<span class="text-red-500 font-semibold mt-2 block">${err}</span>`;
             this.setButtonState('default');
         } finally {

@@ -3,9 +3,10 @@ class NotebookFormatConverter {
      * Converts a Native PyNote Object Array into a .pynote.py Flatfile string
      */
     static serializeToFlat(cells) {
-        let out = '';
+        // 1. Add the protective start marker
+        let out = '# %% [pynote-start]\n';
+        
         cells.forEach((cell, index) => {
-            // Support passing either a DOM Cell element or a raw data object
             const data = typeof cell.toJSON === 'function' ? cell.toJSON() : cell;
             const type = data.type;
             
@@ -17,21 +18,20 @@ class NotebookFormatConverter {
             const metaStr = Object.keys(metaObj).length > 0 ? ` ${JSON.stringify(metaObj)}` : '';
             
             if (type === 'code') {
-                // Code cells output their content exactly as typed
+                // Code cells perfectly preserve the author's internal newlines
                 out += `# %% [code]${metaStr}\n${data.content || ''}`;
             } else {
-                // Markdown cells strip trailing newlines so the """ block is clean
                 const cleanContent = (data.content || '').replace(/\n+$/, '');
                 out += `# %% [${type}]${metaStr}\n"""\n${cleanContent}\n"""`;
             }
             
-            // Only add the visual separator gap between cells.
-            // NEVER append it to the absolute final cell.
             if (index < cells.length - 1) {
                 out += '\n\n';
             }
         });
         
+        // 2. Add the protective end marker so the browser can't strip trailing newlines
+        out += '\n# %% [pynote-end]';
         return out; 
     }
 
@@ -39,11 +39,28 @@ class NotebookFormatConverter {
      * Converts a .pynote.py Flatfile string into a Native PyNote Object Array
      */
     static deserializeFromFlat(payload, options = {}) {
-        if (!payload || !payload.includes('# %%')) {
-            return [{ type: 'code', content: payload || '', isLocked: false, isEditing: false }];
+        if (!payload) {
+            return [{ type: 'code', content: '', isLocked: false, isEditing: false }];
+        }
+
+        // --- NEW: THE EXTRACTION PHASE ---
+        const startMarker = '# %% [pynote-start]';
+        const endMarker = '# %% [pynote-end]';
+        
+        let safePayload = payload;
+        const startIndex = payload.indexOf(startMarker);
+        const endIndex = payload.lastIndexOf(endMarker);
+
+        // If the protective markers exist, slice out ONLY the guaranteed-safe content between them
+        if (startIndex > -1 && endIndex > -1 && endIndex > startIndex) {
+            safePayload = payload.substring(startIndex + startMarker.length, endIndex).replace(/^\r?\n/, '');
+        }
+
+        if (!safePayload.includes('# %%')) {
+            return [{ type: 'code', content: safePayload || '', isLocked: false, isEditing: false }];
         }
         
-        const lines = payload.split(/\r?\n/);
+        const lines = safePayload.split(/\r?\n/);
         const cells = [];
         let currentCell = null;
         
@@ -84,7 +101,6 @@ class NotebookFormatConverter {
                 if (!currentCell) {
                     currentCell = { type: 'code', content: '', isLocked: false, isHidden: false, isEditing: false };
                 }
-                // The split loop artificially adds exactly 1 POSIX newline to every line parsed
                 currentCell.content += line + '\n';
             }
         }
@@ -94,25 +110,22 @@ class NotebookFormatConverter {
         // --- The Cleanup Phase ---
         cells.forEach((c, index) => {
             if (c.type === 'markdown' || c.type === 'text') {
-                // Aggressively strip quotes regardless of invisible Moodle spacing
                 c.content = c.content.replace(/^\s*"""\s*\n?/, '').replace(/\n?\s*"""\s*$/, '');
-                // Markdown editors don't need trailing visual padding
                 c.content = c.content.replace(/\n+$/, ''); 
             } else if (c.type === 'code') {
                 if (index < cells.length - 1) {
-                    // Middle cells had '\n\n' appended during serialization.
-                    // We strip up to 2 newlines to cleanly remove this visual separator.
+                    // Strip the \n\n visual separator from middle cells
                     c.content = c.content.replace(/\n{1,2}$/, '');
                 } else {
-                    // The last cell had NOTHING appended during serialization.
-                    // We ONLY strip the 1 artificial '\n' added by the parsing loop above.
-                    // This preserves EVERY newline the author intentionally placed!
+                    // Because the end marker protected our trailing whitespace from the browser,
+                    // we ONLY need to strip the ONE artificial newline added by the loop above.
+                    // Every intentional blank line the user typed will be perfectly preserved!
                     c.content = c.content.replace(/\n$/, '');
                 }
             }
         });
         
-        return cells.length ? cells : [{ type: 'code', content: payload }];
+        return cells.length ? cells : [{ type: 'code', content: safePayload }];
     }
 }
 

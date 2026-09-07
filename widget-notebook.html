@@ -5,19 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PyNote Widget</title>
 
+    <!-- 1. Tailwind & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     
-    <!-- 1. Import the new Markdown Stylesheet -->
-    <link rel="stylesheet" href="markdown-styles.css">
+    <!-- 2. PyNote Stylesheets -->
+    <link rel="stylesheet" href="https://python-web-ide.pages.dev/pynote-core.css">
+    <link rel="stylesheet" href="https://python-web-ide.pages.dev/markdown-styles.css">
 
-    <!-- Third-Party Runtime Libraries -->
+    <!-- 3. Third-Party Runtime Libraries -->
     <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/autosize.js/6.0.1/autosize.min.js"></script>
 
-    <!-- MathJax Setup -->
+    <!-- 4. MathJax Setup -->
     <script>
         MathJax = {
           tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
@@ -28,24 +30,6 @@
         }
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
-    <style>
-        /* Only Core Widget Layout / CM6 overrides remain here */
-        body { font-family: 'Inter', sans-serif; background-color: #ffffff; margin: 0; overflow-y: hidden; overflow-x: hidden; }
-        textarea { resize: none; overflow: hidden; }
-
-        notebook-text-cell, notebook-markdown-cell, notebook-code-cell { display: block; width: 100%; }
-
-        .cm-wrapper .cm-editor { flex: 1; }
-        .cm-editor.cm-focused { outline: none !important; }
-        .cm-activeLine { background-color: transparent !important; }
-        .cm-activeLineGutter { background-color: transparent !important; }
-        .cm-content { padding-right: 2.5rem !important; }
-
-        #notebook-container { transition: padding 0.2s ease; padding-right: 0; padding-left: 0; }
-        .cell-action-btn { top: auto; bottom: 0.25rem; right: 0.25rem; transform: none; }
-        .cell-toolbar { top: -0.5rem; right: 0.25rem; }
-    </style>
 </head>
 <body class="text-slate-800 flex flex-col transition-none layout-inline">
 
@@ -111,22 +95,23 @@
             }
         };
     </script>
+<!-- Core Styles -->
+<link rel="stylesheet" href="pynote-core.css">
+<link rel="stylesheet" href="markdown-styles.css">
 
-    <!-- Notebook Architecture Scripts -->
+
+    <!-- Notebook Architecture (ORDER MATTERS) -->
     <script src="notebook-format.js"></script>
-    <script src="notebook-generic.js"></script>
+    <script src="notebook-generic.js"></script> <!-- Defines BaseNotebookCell -->
     <script src="text-cells.js"></script>
     <script src="markdown-cells.js"></script>
+    <script src="code-cells.js"></script> <!-- Must be loaded last! -->
 
-    <!-- 2. The Plugin Registry -->
+    <!-- Plugins -->
     <script src="markdown-widget-registry.js"></script>
-
-    <!-- 3. Your Custom Importable Plugins -->
     <script src="plugin-csv.js"></script>
-    <!-- <script src="plugin-mermaid.js"></script> -->
-
-    <!-- 4. The Router / CM6 Override -->
     <script src="markdown-cells-embedded-code.js"></script>
+
 
     <!-- Bootstrap & Moodle Host Sync -->
     <script>

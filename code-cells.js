@@ -22,7 +22,7 @@ class CodeCellElement extends window.BaseNotebookCell {
 
     mountContent(container) {
         this.editorWrap = document.createElement('div');
-        this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] transition-all border border-transparent rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90 bg-slate-100' : 'bg-slate-50'}`;
+        this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] bg-slate-50/50 rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90' : ''}`;
         container.appendChild(this.editorWrap);
         
         this.editorWrap.addEventListener('keydown', (e) => {
@@ -66,27 +66,19 @@ class CodeCellElement extends window.BaseNotebookCell {
             }
 
             if (this.isLocked) {
-                const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
-                if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
+                const ViewObj = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
+                if (ViewObj && ViewObj.editable) customExtensions.push(ViewObj.editable.of(false));
                 
-                const EditorState = cm6.EditorState || (cm6.state ? cm6.state.EditorState : null);
-                if (EditorState && EditorState.readOnly) customExtensions.push(EditorState.readOnly.of(true));
+                const StateObj = cm6.EditorState || (cm6.state ? cm6.state.EditorState : null);
+                if (StateObj && StateObj.readOnly) customExtensions.push(StateObj.readOnly.of(true));
             }
 
             const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
             if (EditorView && EditorView.updateListener) {
                 customExtensions.push(EditorView.updateListener.of((update) => {
                     
-                    // NATIVE CM6 FOCUS TRACKING REVERTED FROM YOUR OLD CODE
                     if (update.focusChanged && update.view.hasFocus) {
-                        if (window.notebookCore && !this.isLocked) {
-                            window.notebookCore.activeCodeEditor = update.view;
-                            
-                            document.querySelectorAll('notebook-code-cell .cm-wrapper').forEach(el => {
-                                el.classList.remove('border-blue-400', 'ring-2', 'ring-blue-100');
-                            });
-                            this.editorWrap.classList.add('border-blue-400', 'ring-2', 'ring-blue-100');
-                        }
+                        if (window.notebookCore) window.notebookCore.activeCodeEditor = update.view;
                     }
                     
                     if (update.focusChanged && !update.view.hasFocus) {

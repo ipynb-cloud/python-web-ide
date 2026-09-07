@@ -1,0 +1,49 @@
+/* pynote-core.css */
+
+/* Global Resets */
+body { 
+    font-family: 'Inter', sans-serif; 
+    background-color: #ffffff; 
+    margin: 0; 
+    overflow-y: hidden; 
+    overflow-x: hidden; 
+}
+
+textarea { 
+    resize: none; 
+    overflow: hidden; 
+}
+
+/* Custom Web Components */
+notebook-text-cell, 
+notebook-markdown-cell, 
+notebook-code-cell { 
+    display: block; 
+    width: 100%; 
+}
+
+/* CodeMirror 6 Specific Overrides */
+.cm-wrapper .cm-editor { flex: 1; }
+.cm-editor.cm-focused { outline: none !important; }
+.cm-activeLine { background-color: transparent !important; }
+.cm-activeLineGutter { background-color: transparent !important; }
+.cm-content { padding-right: 2.5rem !important; }
+
+/* Widget Container & Toolbar Positioning */
+#notebook-container { 
+    transition: padding 0.2s ease; 
+    padding-right: 0; 
+    padding-left: 0; 
+}
+
+.cell-action-btn { 
+    top: auto; 
+    bottom: 0.25rem; 
+    right: 0.25rem; 
+    transform: none; 
+}
+
+.cell-toolbar { 
+    top: -0.5rem; 
+    right: 0.25rem; 
+}

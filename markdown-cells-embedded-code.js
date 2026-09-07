@@ -1,6 +1,5 @@
 /**
- * PyNote Plugin: Embedded CM6 Code Blocks & "Use" Button
- * Must be loaded AFTER markdown-cells.js
+ * PyNote Plugin: CM6 Embeds & Widget Router
  */
 if (customElements.get('notebook-markdown-cell')) {
     const MarkdownCell = customElements.get('notebook-markdown-cell');
@@ -25,11 +24,17 @@ if (customElements.get('notebook-markdown-cell')) {
             const languageMatch = codeEl.className.match(/language-(\w+)/);
             const lang = languageMatch ? languageMatch[1] : 'text';
 
+            // --- 1. ASK THE REGISTRY IF A PLUGIN EXISTS ---
+            if (window.MarkdownWidgetRegistry && window.MarkdownWidgetRegistry.process(lang, pre, codeText, this)) {
+                return; // A plugin successfully handled this block! Stop processing.
+            }
+
+            // --- 2. FALLBACK TO STANDARD CM6 WITH "USE" BUTTON ---
             pre.innerHTML = '';
             pre.style.position = 'relative';
             pre.style.padding = '0';
             pre.style.overflow = 'hidden';
-            pre.classList.add('group', 'border', 'border-slate-200', 'rounded-md', 'my-3');
+            pre.classList.add('group', 'cm-wrapper', 'border', 'border-slate-200', 'rounded-md', 'my-3');
 
             try {
                 if (typeof cm6 !== 'undefined') {
@@ -60,10 +65,12 @@ if (customElements.get('notebook-markdown-cell')) {
                     const state = cm6.createEditorState(codeText, { extensions: customExtensions });
                     editorView.setState(state);
                 } else {
-                    throw new Error("cm6 unavailable");
+                    throw new Error("cm6 object is undefined.");
                 }
             } catch (err) {
+                console.error("PyNote Widget Pipeline: CM6 Initialization Failed:", err);
                 pre.innerHTML = '';
+                pre.classList.remove('cm-wrapper');
                 const fallbackCode = document.createElement('code');
                 fallbackCode.innerText = codeText;
                 pre.style.padding = '1em';
@@ -79,7 +86,6 @@ if (customElements.get('notebook-markdown-cell')) {
 
             btn.innerHTML = `${defaultIcon} <span>Use</span>`;
 
-            // Prevent browser from moving focus away from the active code cell
             btn.addEventListener('mousedown', (e) => { e.preventDefault(); });
             
             btn.onclick = (e) => {
@@ -88,8 +94,6 @@ if (customElements.get('notebook-markdown-cell')) {
                 
                 const editor = window.notebookCore ? window.notebookCore.activeCodeEditor : null;
                 const isReadOnlyGlobal = window.notebookCore ? window.notebookCore.options.isReadOnly : false;
-                
-                // Only check if the DESTINATION editor is read-only.
                 const isDestLocked = editor ? (editor.state.readOnly || false) : false;
 
                 if (editor && !isReadOnlyGlobal && !isDestLocked) {
@@ -102,7 +106,6 @@ if (customElements.get('notebook-markdown-cell')) {
                     });
                     
                     editor.focus(); 
-                    
                     btn.innerHTML = `${insertIcon} <span class="text-green-400">Inserted</span>`;
                 } else {
                     const copyFallback = (text) => {
@@ -120,7 +123,6 @@ if (customElements.get('notebook-markdown-cell')) {
                     }
                     btn.innerHTML = `${copyIcon} <span class="text-blue-400">Copied</span>`;
                 }
-                
                 setTimeout(() => { btn.innerHTML = `${defaultIcon} <span>Use</span>`; }, 2000);
             };
 
@@ -132,6 +134,4 @@ if (customElements.get('notebook-markdown-cell')) {
             window.MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
         }
     };
-} else {
-    console.warn("PyNote Plugin Error: markdown-cells-embedded-code.js must be loaded AFTER markdown-cells.js");
 }

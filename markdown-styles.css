@@ -1,0 +1,76 @@
+/* markdown-styles.css */
+
+.markdown-body { 
+    padding: 0.5rem 1rem; 
+    font-family: 'Inter', sans-serif; 
+    color: #334155; 
+}
+
+.markdown-body h1 { 
+    font-size: 1.8em; 
+    font-weight: 700; 
+    margin-bottom: 0.5em; 
+    border-bottom: 1px solid #e2e8f0; 
+    padding-bottom: 0.2em; 
+}
+
+.markdown-body h2 { 
+    font-size: 1.4em; 
+    font-weight: 600; 
+    margin-top: 1em; 
+    margin-bottom: 0.5em; 
+    border-bottom: 1px solid #e2e8f0; 
+    padding-bottom: 0.2em;
+}
+
+.markdown-body p { 
+    margin-bottom: 1em; 
+    line-height: 1.6; 
+}
+
+/* Standard inline code (ignores CM6 embed blocks) */
+.markdown-body code:not(.cm-content code) { 
+    background-color: #f1f5f9; 
+    padding: 0.2em 0.4em; 
+    border-radius: 3px; 
+    font-family: 'Fira Code', monospace; 
+    font-size: 0.9em; 
+}
+
+.markdown-body ul { 
+    list-style-type: disc; 
+    padding-left: 2em; 
+    margin-bottom: 1em; 
+}
+
+/* Markdown Tables */
+.markdown-body table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin-bottom: 1em; 
+    font-size: 0.9em; 
+}
+
+.markdown-body th, .markdown-body td { 
+    border: 1px solid #cbd5e1; 
+    padding: 0.5em 1em; 
+}
+
+.markdown-body th { 
+    background-color: #f8fafc; 
+    font-weight: 600; 
+    text-align: left; 
+    border-bottom: 2px solid #94a3b8; 
+}
+
+/* Markdown Blockquotes */
+.markdown-body blockquote { 
+    border-left: 4px solid #94a3b8; 
+    padding: 0.5em 1em; 
+    margin-left: 0; 
+    color: #475569; 
+    font-style: italic; 
+    margin-bottom: 1em; 
+    background: #f8fafc; 
+    border-radius: 0 4px 4px 0; 
+}

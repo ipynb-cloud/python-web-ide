@@ -8,7 +8,7 @@
     <!-- Tailwind & Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-
+    <link rel="stylesheet" href="https://python-web-ide.pages.dev/markdown-styles.css">
     <!-- Pre-bundled CM6 wrapper -->
     <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
 
@@ -132,8 +132,16 @@
     <script src="notebook-generic.js"></script>
     <script src="text-cells.js"></script>
     <script src="markdown-cells.js"></script>
+
+    <!-- 2. The Plugin Registry -->
+    <script src="markdown-widget-registry.js"></script>
+
+    <!-- 3. Your Custom Importable Plugins -->
+    <script src="plugin-csv.js"></script>
+    <!-- <script src="plugin-mermaid.js"></script> -->
+
+    <!-- 4. The Router / CM6 Override -->
     <script src="markdown-cells-embedded-code.js"></script>
-    <script src="code-cells.js"></script>
 
     <!-- Bootstrap & Moodle Host Sync -->
     <script>

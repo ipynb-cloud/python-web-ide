@@ -22,8 +22,19 @@ class CodeCellElement extends window.BaseNotebookCell {
 
     mountContent(container) {
         this.editorWrap = document.createElement('div');
-        this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] bg-slate-50/50 rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90' : ''}`;
+        this.editorWrap.className = `w-full flex-1 flex flex-col min-h-[3.25rem] transition-all border border-transparent rounded-md relative box-border cm-wrapper ${this.isLocked ? 'pointer-events-none opacity-90 bg-slate-100' : 'bg-slate-50'}`;
         container.appendChild(this.editorWrap);
+        
+        this.editorWrap.addEventListener('focusin', () => {
+            if (window.notebookCore && !this.isLocked) {
+                window.notebookCore.activeCodeEditor = this.editorView;
+                
+                document.querySelectorAll('notebook-code-cell .cm-wrapper').forEach(el => {
+                    el.classList.remove('border-blue-400', 'ring-2', 'ring-blue-100');
+                });
+                this.editorWrap.classList.add('border-blue-400', 'ring-2', 'ring-blue-100');
+            }
+        });
         
         this.editorWrap.addEventListener('keydown', (e) => {
             if (e.shiftKey && e.key === 'Enter') {
@@ -41,9 +52,13 @@ class CodeCellElement extends window.BaseNotebookCell {
                 return;
             }
 
+            const coreConfig = (window.notebookCore && window.notebookCore.options) || {};
+            const acMode = coreConfig['autocomplete-mode'] || coreConfig.autocompleteMode || 'custom';
+
             const customExtensions = [];
             
             if (cm6.basicSetup) customExtensions.push(cm6.basicSetup);
+            if (cm6.pynoteTheme) customExtensions.push(cm6.pynoteTheme);
 
             if (typeof cm6.python === 'function') {
                 customExtensions.push(cm6.python());
@@ -58,11 +73,16 @@ class CodeCellElement extends window.BaseNotebookCell {
                 customExtensions.push(cm6.state.EditorState.tabSize.of(4));
             }
 
-            if (cm6.keymap && cm6.commands && cm6.commands.indentMore && cm6.commands.indentLess) {
-                customExtensions.push(cm6.keymap.of([
-                    { key: "Tab", run: cm6.commands.indentMore },
-                    { key: "Shift-Tab", run: cm6.commands.indentLess }
-                ]));
+            // --- THE NEW BUNDLED AUTOCOMPLETE HOOK ---
+            if (cm6.getAutocompleteExtensions) {
+                customExtensions.push(...cm6.getAutocompleteExtensions(acMode));
+            } else {
+                if (cm6.keymap && cm6.commands && cm6.commands.indentMore && cm6.commands.indentLess) {
+                    customExtensions.push(cm6.keymap.of([
+                        { key: "Tab", run: cm6.commands.indentMore },
+                        { key: "Shift-Tab", run: cm6.commands.indentLess }
+                    ]));
+                }
             }
 
             if (this.isLocked) {
@@ -77,10 +97,6 @@ class CodeCellElement extends window.BaseNotebookCell {
             if (EditorView && EditorView.updateListener) {
                 customExtensions.push(EditorView.updateListener.of((update) => {
                     
-                    if (update.focusChanged && update.view.hasFocus) {
-                        if (window.notebookCore) window.notebookCore.activeCodeEditor = update.view;
-                    }
-                    
                     if (update.focusChanged && !update.view.hasFocus) {
                         const newContent = update.view.state.doc.toString();
                         if (this.content !== newContent) {
@@ -92,8 +108,7 @@ class CodeCellElement extends window.BaseNotebookCell {
                     if (update.docChanged || update.geometryChanged) {
                         if (update.docChanged) {
                             this.setButtonState('default');
-                            const config = (window.notebookCore && window.notebookCore.options) || {};
-                            if (config.autoClearOutputOnEdit && this.output) {
+                            if (coreConfig.autoClearOutputOnEdit && this.output) {
                                 this.clearOutput();
                             }
                         }

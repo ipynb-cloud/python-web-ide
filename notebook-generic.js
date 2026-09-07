@@ -219,8 +219,34 @@ class SkulptKernel {
             timeoutMsg: () => "Execution stopped: Time limit (5s) exceeded."
         });
 
+        // --- NEW: Skulpt Expression Evaluator ---
+        let executableCode = code;
+        const lines = code.trimEnd().split('\n');
+        
+        if (lines.length > 0) {
+            const lastLine = lines[lines.length - 1];
+            
+            // Heuristic: Is it a top-level line? Does it lack assignments? Is it not a keyword?
+            const sanitized = lastLine.replace(/(==|!=|<=|>=)/g, '  ');
+            const hasAssignment = sanitized.includes('=');
+            const isKeyword = /^(import|from|def|class|if|elif|else|for|while|try|except|finally|with|assert|pass|return|break|continue|yield|del|raise|global|nonlocal|print)\b/.test(lastLine.trim());
+
+            if (lastLine && !/^\s/.test(lastLine) && !hasAssignment && !isKeyword) {
+                // Wrap the expression safely. If eval() fails, it falls back to native execution.
+                lines[lines.length - 1] = `
+try:
+    __skulpt_res = eval(${JSON.stringify(lastLine)})
+    if __skulpt_res is not None:
+        print(repr(__skulpt_res))
+except BaseException:
+    ${lastLine}
+`.trim();
+                executableCode = lines.join('\n');
+            }
+        }
+
         try {
-            await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, code, true));
+            await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, executableCode, true));
         } catch (err) {
             if (this.isKilled) throw new Error(`Execution stopped: Output exceeded maximum limit.`);
             throw new Error(err.toString().replace(/<stdin>/g, "line"));

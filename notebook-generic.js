@@ -276,12 +276,15 @@ class BaseNotebookCell extends HTMLElement {
         this.mainBox.className = 'cell-container group/cell relative bg-white border border-slate-200 rounded-md shadow-sm flex items-stretch transition-all hover:border-slate-300 min-h-[1.75rem] box-border';
         
         const isReadOnlyGlobal = window.notebookCore && window.notebookCore.options && window.notebookCore.options.isReadOnly;
+        // --- NEW: Grab the disableMove flag ---
+        const disableMove = window.notebookCore && window.notebookCore.options && window.notebookCore.options.disableMove;
 
         if (this.isLocked || isReadOnlyGlobal) {
             this.mainBox.classList.add('bg-slate-50');
         }
 
-        if (!this.isLocked && !isReadOnlyGlobal) {
+        // --- UPDATED: Hide the drag handle if movement is disabled ---
+        if (!this.isLocked && !isReadOnlyGlobal && !disableMove) {
             const dragHandle = document.createElement('div');
             dragHandle.className = 'drag-handle absolute left-0 top-0 bottom-0 w-1 bg-transparent hover:bg-blue-600 group-hover/cell:bg-blue-400 cursor-grab z-30 rounded-l-md opacity-0 group-hover/cell:opacity-100 transition-all';
             this.mainBox.appendChild(dragHandle);
@@ -397,6 +400,7 @@ class NotebookCore {
         const defaultConfig = {
             widgetId: Math.random().toString(36).substring(2, 10),
             isReadOnly: false,
+            questionMode: false, // <-- NEW Macro Flag
             defaultCellType: 'code',
             kernelType: 'pyodide', 
             kernelMode: 'local',   
@@ -406,7 +410,8 @@ class NotebookCore {
             maxRuntime: 15.0,          
             disableInsertAll: false,
             disableInsertTop: false,
-            disableDelete: false, // <-- NEW FLAG
+            disableDelete: false,
+            disableMove: false,  // <-- NEW Flag
             outputCurtailThresholdLines: 40,
             outputCurtailShowLines: 10,
             outputLineHeightPx: 21,
@@ -414,10 +419,26 @@ class NotebookCore {
             showTopBar: false,
             lockAllMarkdown: false,
             disableTypeChange: false,
-            layout: 'inline'
+            layout: 'inline',
+            autocompleteMode: 'custom'
         };
+
+        // --- NEW: The Question Mode Macro ---
+        // If questionMode is requested, we rewrite the defaults to be strict.
+        if (options.questionMode) {
+            defaultConfig.lockAllMarkdown = true;
+            defaultConfig.disableMove = true;
+            defaultConfig.disableDelete = true;
+            defaultConfig.disableTypeChange = true;
+            defaultConfig.disableInsertAll = true;
+            defaultConfig.disableInsertTop = true;
+        }
         
+        // Merge the incoming options OVER the new defaults. 
+        // This allows a user to specify {"questionMode": true, "disableInsertAll": false} 
+        // and successfully override the strict default!
         this.options = { ...defaultConfig, ...options };
+        
         this.isReadOnly = this.options.isReadOnly;
         this.defaultCellType = this.options.defaultCellType;
         this.activeCodeEditor = null;
@@ -432,7 +453,6 @@ class NotebookCore {
             }
         }
         
-        // Sync the HTML selector to match the incoming configuration
         const selector = document.getElementById('kernel-selector');
         if (selector) selector.value = this.options.kernelType;
 
@@ -589,7 +609,9 @@ class NotebookCore {
     }
 
     setupDragAndDrop() {
-        if (this.isReadOnly || this.sortable || typeof Sortable === 'undefined') return;
+        // --- UPDATED: Prevent SortableJS from running if disableMove is active ---
+        if (this.isReadOnly || this.options.disableMove || this.sortable || typeof Sortable === 'undefined') return;
+        
         this.sortable = new Sortable(this.container, {
             handle: '.drag-handle',
             animation: 150,

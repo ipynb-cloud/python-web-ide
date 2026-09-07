@@ -291,6 +291,7 @@ class BaseNotebookCell extends HTMLElement {
         this.contentArea.className = 'flex-1 relative flex flex-col min-w-0 p-0 box-border min-h-0';
         
         const disableTypeChange = window.notebookCore && window.notebookCore.options && window.notebookCore.options.disableTypeChange;
+        const disableDelete = window.notebookCore && window.notebookCore.options && window.notebookCore.options.disableDelete;
 
         if (!this.isLocked && !isReadOnlyGlobal) {
             const toolbar = document.createElement('div');
@@ -314,15 +315,20 @@ class BaseNotebookCell extends HTMLElement {
                 toolbar.appendChild(dropdownWrap);
             }
 
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 pl-1';
-            if (!disableTypeChange) deleteBtn.classList.add('border-l', 'border-slate-200');
-            deleteBtn.title = 'delete cell';
-            deleteBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
-            deleteBtn.onclick = () => this.dispatchAction('cell-deleted');
-            toolbar.appendChild(deleteBtn);
+            if (!disableDelete) {
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors ml-0.5 pl-1';
+                if (!disableTypeChange) deleteBtn.classList.add('border-l', 'border-slate-200');
+                deleteBtn.title = 'delete cell';
+                deleteBtn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
+                deleteBtn.onclick = () => this.dispatchAction('cell-deleted');
+                toolbar.appendChild(deleteBtn);
+            }
 
-            this.contentArea.appendChild(toolbar);
+            // Only append the toolbar container if it actually has tools inside it!
+            if (!disableTypeChange || !disableDelete) {
+                this.contentArea.appendChild(toolbar);
+            }
         }
 
         this.actionBtnElement = document.createElement('button');
@@ -392,7 +398,7 @@ class NotebookCore {
             widgetId: Math.random().toString(36).substring(2, 10),
             isReadOnly: false,
             defaultCellType: 'code',
-            kernelType: 'pyodide', // Default to Pyodide
+            kernelType: 'pyodide', 
             kernelMode: 'local',   
             preloadMatplotlib: true,
             maxOutputChars: 50000, 
@@ -400,6 +406,7 @@ class NotebookCore {
             maxRuntime: 15.0,          
             disableInsertAll: false,
             disableInsertTop: false,
+            disableDelete: false, // <-- NEW FLAG
             outputCurtailThresholdLines: 40,
             outputCurtailShowLines: 10,
             outputLineHeightPx: 21,
@@ -466,6 +473,8 @@ class NotebookCore {
         });
         
         this.container.addEventListener('cell-deleted', (e) => {
+            if (this.options.disableDelete) return; // <-- LOGIC SAFEGUARD
+            
             const el = e.target;
             if (!this.isReadOnly && el && !el.isLocked) {
                 el.remove();

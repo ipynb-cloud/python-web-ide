@@ -583,105 +583,18 @@ class NotebookCore {
             },
         });
     }
-
     serializeToFlat() {
-        let out = '';
-        Array.from(this.container.children).forEach(cell => {
-            const data = cell.toJSON();
-            const type = data.type;
-            const meta = data.isLocked ? ` {"locked": true}` : '';
-            
-            if (type === 'code') {
-                const langMeta = data.isLocked ? ` {"locked": true, "lang": "python"}` : ` {"lang": "python"}`;
-                out += `# %% [code]${langMeta}\n${data.content}\n\n`;
-            } else {
-                out += `# %% [${type}]${meta}\n"""\n${data.content}\n"""\n\n`;
-            }
-        });
-        return out.trim();
+        const cells = this.toJSON();
+        return window.NotebookFormatConverter.serializeToFlat(cells);
     }
 
     deserializeFromFlat(payload) {
-        console.log("[Parser] Starting to parse flat payload. Total length:", payload?.length);
-        
-        if (!payload || !payload.includes('# %%')) {
-            console.log("[Parser] No '# %%' markers found. Treating entire payload as single code cell.");
-            return [{ type: 'code', content: payload || '' }];
-        }
-        
-        const lines = payload.split(/\r?\n/);
-        console.log(`[Parser] Split into ${lines.length} lines. Processing line-by-line...`);
-        const cells = [];
-        let currentCell = null;
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            
-            // Highly forgiving regex: Looks for # %% (with optional spaces) and captures everything after it
-            const markerMatch = line.match(/^#\s*%%(.*)$/);
-            
-            if (markerMatch) {
-                console.log(`[Parser] Line ${i + 1}: Found cell marker -> "${line}"`);
-                
-                if (currentCell) {
-                    console.log(`[Parser] Saving previous ${currentCell.type} cell (${currentCell.content.length} chars)`);
-                    cells.push(currentCell);
-                }
-                
-                const metaRaw = markerMatch[1].trim();
-                let type = 'code';
-                let isLocked = false;
-                
-                // Extract type: e.g. [markdown]
-                const typeMatch = metaRaw.match(/\[([a-zA-Z]+)\]/);
-                if (typeMatch) type = typeMatch[1];
-                
-                // Extract json: e.g. {"locked": true}
-                const jsonMatch = metaRaw.match(/({.*})/);
-                if (jsonMatch) {
-                    try {
-                        const metaObj = JSON.parse(jsonMatch[1].replace(/'/g, '"'));
-                        if (metaObj.locked) isLocked = true;
-                    } catch(e) { 
-                        console.warn("[Parser] Failed to parse metadata json:", jsonMatch[1]); 
-                    }
-                }
-
-                // Apply the global lockAllMarkdown config if present
-                if (this.options && this.options.lockAllMarkdown && type === 'markdown') {
-                    isLocked = true;
-                }
-                
-                console.log(`[Parser] Parsed Marker: type=${type}, locked=${isLocked}`);
-                currentCell = { type, content: '', isLocked, isEditing: false };
-            } else {
-            if (!currentCell) {
-                    console.log(`[Parser] Line ${i + 1} has no preceding marker. Creating default code cell.`);
-                    currentCell = { type: 'code', content: '', isLocked: false, isEditing: false };
-                }
-                currentCell.content += line + '\n';
-            }
-        }
-        
-        if (currentCell) {
-            console.log(`[Parser] End of file. Saving final ${currentCell.type} cell (${currentCell.content.length} chars)`);
-            cells.push(currentCell);
-        }
-        
-        // Clean up content formatting
-        cells.forEach((c, idx) => {
-            if (c.type === 'markdown' || c.type === 'text') {
-                c.content = c.content.replace(/^"""\n?/, '').replace(/\n?"""\n?$/, '');
-            }
-            c.content = c.content.replace(/\n+$/, ''); // trim trailing empty lines
-            console.log(`[Parser] Finalized Cell ${idx + 1} [${c.type}]: Starts with "${c.content.substring(0, 20).replace(/\n/g, '\\n')}..."`);
-        });
-        
-        console.log(`[Parser] Finished parsing. Returning ${cells.length} cells.`);
-        return cells.length ? cells : [{ type: 'code', content: payload }];
+        return window.NotebookFormatConverter.deserializeFromFlat(payload, this.options);
     }
 
-    toJSON() { return Array.from(this.container.children).map(c => c.toJSON()); }
+    toJSON() { 
+        return Array.from(this.container.children).map(c => c.toJSON()); 
+    }
 
     syncToServer() {
         if (typeof window.triggerHostSync === 'function') {

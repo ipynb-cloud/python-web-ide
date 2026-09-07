@@ -2,8 +2,10 @@
   "name": "cm6-python-bundle",
   "version": "1.0.0",
   "description": "Bundles CodeMirror 6 with Python support for PyNote",
-  "scripts": {
-    "build": "esbuild cm6-entry.js --bundle --minify --format=iife --outfile=cm6.bundle.min.js"
+"scripts": {
+    "build:cm6": "esbuild cm6-entry.js --bundle --minify --format=iife --outfile=cm6.bundle.min.js",
+    "build:notebook": "esbuild notebook-generic.js --bundle --minify --format=iife --outfile=pynote-bundle.min.js",
+    "build": "npm run build:cm6 && npm run build:notebook"
   },
   "dependencies": {
     "@codemirror/commands": "^6.6.1",

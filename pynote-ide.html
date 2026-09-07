@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PyNote IDE App</title>
+    <title>PyNote Web IDE</title>
 
     <!-- 1. Tailwind & Fonts -->
     <link rel="stylesheet" href="tailwind-compiled.css">
@@ -14,12 +14,13 @@
     <link rel="stylesheet" href="https://python-web-ide.pages.dev/markdown-styles.css">
 
     <!-- 3. Third-Party Runtime Libraries -->
+    <!-- Note: Make sure to use your locally compiled cm6.bundle.min.js! -->
     <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/autosize.js/6.0.1/autosize.min.js"></script>
     
-    <!-- NEW: Split.js for Resizable Panels -->
+    <!-- Split.js for Resizable Panels -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.5/split.min.js"></script>
 
     <!-- 4. MathJax Setup -->
@@ -60,7 +61,7 @@
     <!-- Hidden File Input for Loading -->
     <input type="file" id="file-upload" class="hidden" accept=".py,.txt,.json,.ipynb">
 
-    <!-- TOP NAVBAR (Restored Dropdown Menu) -->
+    <!-- TOP NAVBAR -->
     <nav class="bg-slate-800 text-slate-200 flex items-center px-2 py-1 text-[13px] shrink-0 relative z-50 shadow-md font-sans select-none">
         <div class="font-bold px-3 text-white tracking-tight flex items-center gap-2">
             <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
@@ -86,13 +87,33 @@
             </div>
         </div>
 
-        <!-- Settings Menu (Optional duplicate of RHS, kept for completeness) -->
+        <!-- View Menu -->
+        <div class="relative">
+            <button id="menu-btn-view" class="menu-btn px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-pointer outline-none">View</button>
+            <div id="dropdown-view" class="dropdown-menu absolute left-0 mt-0 w-48 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden py-1">
+                <a href="#" onclick="switchViewMode('visual'); return false;" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex items-center justify-between">
+                    <span>Visual Editor</span> <span id="check-view-visual" class="text-blue-500 font-bold view-check">✓</span>
+                </a>
+                <a href="#" onclick="switchViewMode('flatfile'); return false;" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex items-center justify-between">
+                    <span>.pynote.py (Raw)</span> <span id="check-view-flatfile" class="text-blue-500 font-bold hidden view-check">✓</span>
+                </a>
+                <a href="#" onclick="switchViewMode('jupyter'); return false;" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex items-center justify-between">
+                    <span>.ipynb (Raw)</span> <span id="check-view-jupyter" class="text-blue-500 font-bold hidden view-check">✓</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Settings Menu -->
         <div class="relative">
             <button id="menu-btn-settings" class="menu-btn px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-pointer outline-none">Settings</button>
             <div id="dropdown-settings" class="dropdown-menu absolute left-0 mt-0 w-64 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden py-1">
                 <div class="px-4 py-1.5 text-xs text-slate-500">Use the right-hand panel to adjust live configuration.</div>
             </div>
         </div>
+        
+        <button id="btn-export" class="px-3 py-1 hover:bg-slate-700 hover:text-white rounded transition-colors ml-auto text-xs font-semibold bg-slate-700/50 border border-slate-600">
+            Download File
+        </button>
     </nav>
 
     <!-- 3-PANE WORKSPACE (Split.js Target) -->
@@ -123,11 +144,11 @@
                 <!-- Tabs injected by JS -->
             </div>
             
-<!-- Scrollable Workspace -->
+            <!-- Scrollable Workspace -->
             <div class="flex-1 overflow-y-auto p-6 relative flex flex-col items-center w-full">
-                <div class="w-full max-w-5xl bg-white border border-slate-200 rounded-md shadow-sm min-h-[500px] flex flex-col">
-                    
-                    <!-- THE MISSING TOP TOOLBAR -->
+                
+                <!-- VISUAL EDITOR -->
+                <div id="visual-editor-wrapper" class="w-full max-w-5xl bg-white border border-slate-200 rounded-md shadow-sm min-h-[500px] flex flex-col">
                     <header id="main-header" class="hidden bg-white border-b border-slate-200 px-4 py-2 flex justify-between items-center shrink-0 rounded-t-md transition-all">
                         <div class="flex items-center gap-3">
                             <div id="kernel-status-wrapper" class="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-md tracking-wider border border-slate-200 shadow-inner">
@@ -145,15 +166,24 @@
                                 Restart
                             </button>
                             <div class="w-px h-4 bg-slate-300 mx-1"></div>
-                            <button id="run-all-btn" onclick="notebookCore.runAll()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button onclick="notebookCore.runAll()" class="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors shadow-sm">
                                 Run All
                             </button>
                         </div>
                     </header>
-
                     <!-- PyNote mounts here -->
                     <div id="pynote-mount-point" class="flex-1 p-2 pb-6 relative flex flex-col w-full box-border"></div>
                 </div>
+
+                <!-- RAW TEXT EDITOR (Hidden by default) -->
+                <div id="raw-editor-wrapper" class="w-full max-w-5xl bg-white border border-slate-200 rounded-md shadow-sm min-h-[500px] flex-col hidden">
+                    <div class="bg-slate-800 text-slate-200 px-4 py-2 text-xs font-mono rounded-t-md flex justify-between shrink-0">
+                        <span id="raw-editor-title">raw mode</span>
+                        <span class="text-slate-400">Edits are applied when switching views or tabs.</span>
+                    </div>
+                    <textarea id="raw-editor-textarea" spellcheck="false" class="flex-1 w-full p-4 font-mono text-sm resize-none outline-none bg-slate-50 text-slate-800 rounded-b-md min-h-[500px] focus:ring-2 focus:ring-inset focus:ring-blue-500"></textarea>
+                </div>
+
             </div>
         </main>
 
@@ -190,100 +220,148 @@
         // --- 0. LAYOUT & MENU LOGIC ---
         
         // Initialize Split.js (Resizable Panes)
-        // sizes: percentages. minSize: pixels (collapses to 0 when dragged past threshold)
         const split = Split(['#lhs-panel', '#main-panel', '#rhs-panel'], {
-            sizes: [18, 62, 20],
-            minSize: [0, 400, 0],
-            gutterSize: 6,
-            snapOffset: 40 // Snaps panel shut if dragged to within 40px
+            sizes: [18, 62, 20], minSize: [0, 400, 0], gutterSize: 6, snapOffset: 40
         });
 
         // Dropdown Menu Logic
         const fileBtn = document.getElementById('menu-btn-file'), fileDropdown = document.getElementById('dropdown-file');
+        const viewBtn = document.getElementById('menu-btn-view'), viewDropdown = document.getElementById('dropdown-view');
         const settingsBtn = document.getElementById('menu-btn-settings'), settingsDropdown = document.getElementById('dropdown-settings');
 
         function closeAllMenus() {
-            fileDropdown.classList.add('hidden'); settingsDropdown.classList.add('hidden');
-            fileBtn.classList.remove('bg-slate-700', 'text-white'); settingsBtn.classList.remove('bg-slate-700', 'text-white');
+            fileDropdown.classList.add('hidden'); viewDropdown.classList.add('hidden'); settingsDropdown.classList.add('hidden');
+            fileBtn.classList.remove('bg-slate-700', 'text-white'); viewBtn.classList.remove('bg-slate-700', 'text-white'); settingsBtn.classList.remove('bg-slate-700', 'text-white');
         }
         function toggleMenu(btn, dropdown, event) {
-            event.stopPropagation(); const isHidden = dropdown.classList.contains('hidden');
-            closeAllMenus();
+            event.stopPropagation(); const isHidden = dropdown.classList.contains('hidden'); closeAllMenus();
             if (isHidden) { dropdown.classList.remove('hidden'); btn.classList.add('bg-slate-700', 'text-white'); }
         }
         fileBtn.onclick = (e) => toggleMenu(fileBtn, fileDropdown, e);
+        viewBtn.onclick = (e) => toggleMenu(viewBtn, viewDropdown, e);
         settingsBtn.onclick = (e) => toggleMenu(settingsBtn, settingsDropdown, e);
         document.addEventListener('click', () => closeAllMenus());
         document.querySelectorAll('.dropdown-menu').forEach(menu => {
             menu.addEventListener('click', (e) => { if(e.target.tagName !== 'A') e.stopPropagation(); });
         });
 
-        // --- 1. VIRTUAL FILE SYSTEM ---
+        // --- 1. STATE & VIRTUAL FILE SYSTEM ---
         let virtualFS = {
-            'main.pynote.py': `# %% [markdown]\n"""\n### Welcome to the PyNote IDE!\nUse the File Explorer to upload notebooks, and the right panel to test configurations.\n"""\n\n# %% [code]\nprint("Hello World!")`
+            'main.pynote.py': `# %% [markdown]\n"""\n### Welcome to the PyNote IDE!\nUse the **View** menu to switch between the Visual Editor and raw code formats!\n"""\n\n# %% [code]\nprint("Hello World!")`
         };
         let activeFileName = 'main.pynote.py';
+        let currentViewMode = 'visual'; // 'visual', 'flatfile', 'jupyter'
 
         let currentOptions = {
             showTopBar: true, kernelType: 'skulpt', autocompleteMode: 'custom',
             questionMode: false, isReadOnly: false, disableInsertAll: false, disableDelete: false
         };
 
-        // --- 2. RENDERING ENGINE ---
+        // --- 2. VIEW STATE SYNCHRONIZATION ---
         
+        // Grabs data from WHICHEVER editor is currently open and saves it to the Virtual FS.
+        function syncCurrentState() {
+            if (currentViewMode === 'visual' && window.notebookCore) {
+                virtualFS[activeFileName] = window.notebookCore.serializeToFlat();
+            } else if (currentViewMode === 'flatfile') {
+                virtualFS[activeFileName] = document.getElementById('raw-editor-textarea').value;
+            } else if (currentViewMode === 'jupyter') {
+                try {
+                    const ipynb = JSON.parse(document.getElementById('raw-editor-textarea').value);
+                    const pynoteCells = ipynb.cells.map(c => {
+                        const type = c.cell_type === 'markdown' ? 'markdown' : 'code';
+                        const str = Array.isArray(c.source) ? c.source.join('') : (c.source || '');
+                        const locked = c.metadata && c.metadata.pynote_locked ? '{"locked":true}' : '';
+                        if (type === 'code') return `# %% [code] ${locked}\n${str.replace(/\\n+$/, '')}`;
+                        return `# %% [markdown] ${locked}\n"""\n${str.replace(/\\n+$/, '')}\n"""`;
+                    });
+                    virtualFS[activeFileName] = pynoteCells.join('\n\n');
+                } catch (e) {
+                    alert("Invalid Jupyter JSON! Cannot apply changes. Please fix the formatting.");
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        window.switchViewMode = function(mode) {
+            if (mode === currentViewMode) return;
+            if (!syncCurrentState()) return; 
+            currentViewMode = mode;
+            
+            document.querySelectorAll('.view-check').forEach(el => el.classList.add('hidden'));
+            document.getElementById('check-view-' + mode).classList.remove('hidden');
+            
+            renderWorkspace();
+        };
+
         function switchFile(newFileName) {
             if (activeFileName === newFileName) return;
-
-            // 1. Save current state before switching
-            if (window.notebookCore) {
-                virtualFS[activeFileName] = window.notebookCore.serializeToFlat();
-            }
-            // 2. Switch pointer
+            if (!syncCurrentState()) return; // Save current editor before switching tabs
             activeFileName = newFileName;
-            // 3. Render new UI
             renderWorkspace();
         }
 
+        // Catch internal PyNote saves
+        window.triggerHostSync = function(flatfilePayload) {
+            if (currentViewMode === 'visual') virtualFS[activeFileName] = flatfilePayload;
+        };
+
+
+        // --- 3. RENDERING ENGINE ---
+        
         function renderWorkspace() {
-            // Save state if just a config update on the current file
-            if (window.notebookCore && virtualFS[activeFileName]) {
-                virtualFS[activeFileName] = window.notebookCore.serializeToFlat();
+            const visualWrapper = document.getElementById('visual-editor-wrapper');
+            const rawWrapper = document.getElementById('raw-editor-wrapper');
+            const rawTextarea = document.getElementById('raw-editor-textarea');
+
+            if (currentViewMode === 'visual') {
+                rawWrapper.classList.add('hidden'); rawWrapper.classList.remove('flex');
+                visualWrapper.classList.remove('hidden'); visualWrapper.classList.add('flex');
+                
+                // Apply TopBar & Kernel UI
+                const header = document.getElementById('main-header');
+                if (currentOptions.showTopBar) header.classList.remove('hidden'); else header.classList.add('hidden');
+                document.getElementById('kernel-selector').value = currentOptions.kernelType;
+
+                document.getElementById('pynote-mount-point').innerHTML = '';
+                window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
+                const parsedCells = window.notebookCore.deserializeFromFlat(virtualFS[activeFileName] || '');
+                window.notebookCore.loadData(parsedCells);
+            } else {
+                visualWrapper.classList.add('hidden'); visualWrapper.classList.remove('flex');
+                rawWrapper.classList.remove('hidden'); rawWrapper.classList.add('flex');
+                
+                if (currentViewMode === 'flatfile') {
+                    document.getElementById('raw-editor-title').innerText = activeFileName + " (Flatfile Format)";
+                    rawTextarea.value = virtualFS[activeFileName] || '';
+                } else if (currentViewMode === 'jupyter') {
+                    document.getElementById('raw-editor-title').innerText = activeFileName + " (Jupyter JSON Format)";
+                    // Must use the static NotebookFormatConverter to parse the flatfile without mounting to DOM
+                    const parsedCells = NotebookFormatConverter.deserializeFromFlat(virtualFS[activeFileName] || '');
+                    const cells = parsedCells.map(c => ({
+                        cell_type: c.type === 'code' ? 'code' : 'markdown',
+                        metadata: { pynote_locked: !!c.isLocked },
+                        source: c.content ? c.content.split('\n').map((l, i, arr) => l + (i === arr.length - 1 ? '' : '\n')) : [],
+                        ...(c.type === 'code' ? { execution_count: null, outputs: [] } : {})
+                    }));
+                    rawTextarea.value = JSON.stringify({ cells, metadata: { language_info: { name: "python" } }, nbformat: 4, nbformat_minor: 5 }, null, 2);
+                }
             }
-
-            // Wipe the DOM container to ensure a clean slate
-            const mountPoint = document.getElementById('pynote-mount-point');
-            mountPoint.innerHTML = '';
-
-            // Destroy and re-create notebook
-            window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
-            const parsedCells = window.notebookCore.deserializeFromFlat(virtualFS[activeFileName] || '');
-            window.notebookCore.loadData(parsedCells);
             
             updateFileListUI();
             updateTabBarUI();
         }
 
-        window.triggerHostSync = function(flatfilePayload) {
-            virtualFS[activeFileName] = flatfilePayload;
-        };
-
-        // --- 3. UI GENERATORS (Tabs & Files) ---
+        // --- 4. UI GENERATORS (Tabs & Files) ---
 
         function updateTabBarUI() {
             const tabBar = document.getElementById('tab-bar');
             tabBar.innerHTML = '';
-            
             Object.keys(virtualFS).forEach(fileName => {
                 const isActive = fileName === activeFileName;
                 const tab = document.createElement('div');
-                
-                // Browser-tab styling
-                tab.className = `flex items-center px-4 py-1.5 text-sm cursor-pointer select-none border-t border-x rounded-t-lg transition-colors ${
-                    isActive 
-                    ? 'bg-white border-slate-300 text-blue-600 font-medium translate-y-px z-10' 
-                    : 'bg-slate-100 border-transparent text-slate-500 hover:bg-slate-50 border-b border-b-slate-300'
-                }`;
-                
+                tab.className = `flex items-center px-4 py-1.5 text-sm cursor-pointer select-none border-t border-x rounded-t-lg transition-colors ${isActive ? 'bg-white border-slate-300 text-blue-600 font-medium translate-y-px z-10' : 'bg-slate-100 border-transparent text-slate-500 hover:bg-slate-50 border-b border-b-slate-300'}`;
                 tab.innerHTML = `<svg class="w-4 h-4 mr-1.5 ${isActive ? 'text-blue-500' : 'text-slate-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> ${fileName}`;
                 tab.onclick = () => switchFile(fileName);
                 tabBar.appendChild(tab);
@@ -293,7 +371,6 @@
         function updateFileListUI() {
             const listEl = document.getElementById('file-list');
             listEl.innerHTML = '';
-            
             Object.keys(virtualFS).forEach(fileName => {
                 const isActive = fileName === activeFileName;
                 const btn = document.createElement('button');
@@ -304,28 +381,61 @@
             });
         }
 
-        // --- 4. EXPORT MENU BINDINGS ---
+        // --- 5. EXPORT MENU BINDINGS ---
         function downloadFile(filename, content) {
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
         }
 
-        document.getElementById('menu-file-save-flat').onclick = (e) => { e.preventDefault(); downloadFile(activeFileName.replace('.ipynb', '') + '.pynote.py', window.notebookCore.serializeToFlat()); };
+        document.getElementById('menu-file-save-flat').onclick = (e) => {
+            e.preventDefault(); if (syncCurrentState()) downloadFile(activeFileName.replace('.ipynb', '') + '.pynote.py', virtualFS[activeFileName]);
+        };
+
+        // Main navbar download button (defaults to flatfile)
+        document.getElementById('btn-export').onclick = () => {
+            if (syncCurrentState()) downloadFile(activeFileName.replace('.ipynb', '') + '.pynote.py', virtualFS[activeFileName]);
+        };
+
         document.getElementById('menu-file-save-ipynb').onclick = (e) => {
             e.preventDefault();
-            const cells = window.notebookCore.toJSON().map(c => ({
-                cell_type: c.type === 'code' ? 'code' : 'markdown',
-                metadata: { pynote_locked: !!c.isLocked },
+            if (!syncCurrentState()) return;
+            const parsedCells = NotebookFormatConverter.deserializeFromFlat(virtualFS[activeFileName]);
+            const cells = parsedCells.map(c => ({
+                cell_type: c.type === 'code' ? 'code' : 'markdown', metadata: { pynote_locked: !!c.isLocked },
                 source: c.content ? c.content.split('\n').map((l, i, arr) => l + (i === arr.length - 1 ? '' : '\n')) : [],
                 ...(c.type === 'code' ? { execution_count: null, outputs: [] } : {})
             }));
             downloadFile(activeFileName.replace('.pynote.py', '') + '.ipynb', JSON.stringify({ cells, metadata: { language_info: { name: "python" } }, nbformat: 4, nbformat_minor: 5 }, null, 2));
         };
-        // (Moodle XML logic remains identical to your previous implementation, omitted here for brevity to focus on layout)
 
-        // --- 5. DRAG & DROP BINDINGS ---
+        document.getElementById('menu-file-save-moodle').onclick = (e) => {
+            e.preventDefault();
+            if (!syncCurrentState()) return;
+            const safeFlatData = virtualFS[activeFileName].replace(/]]>/g, ']]]]><![CDATA[>');
+            const htmlStub = `
+<div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 20px;">
+    <!-- REPLACE 'YOUR_DOMAIN' WITH YOUR ACTUAL HOSTING URL -->
+    <iframe id="pynote-iframe" src="https://YOUR_DOMAIN.com/widget-notebook.html" scrolling="no" style="width: 100%; border: none; display: block; transition: height 0.15s ease-out;"></iframe>
+</div>
+<textarea id="pynote-database" style="display:none;">${safeFlatData}</textarea>
+<script>
+    (function() {
+        const iframe = document.getElementById('pynote-iframe'), db = document.getElementById('pynote-database');
+        const config = { showTopBar: true, kernelType: 'skulpt', autocompleteMode: 'custom', questionMode: true };
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'REQUEST_CONTENT') iframe.contentWindow.postMessage({ type: 'LOAD_CONTENT', payload: db.value, config: config }, '*');
+            else if (event.data.type === 'SYNC_HEIGHT') iframe.style.height = event.data.payload + 'px';
+            else if (event.data.type === 'SYNC_CONTENT') { db.value = event.data.payload; iframe.contentWindow.postMessage({ type: 'ACK_CONTENT', msgId: event.data.msgId }, '*'); }
+        });
+    })();
+<\\/script>`.trim();
+            const safeHtmlStub = htmlStub.replace(/]]>/g, ']]]]><![CDATA[>');
+            const moodleXml = `<?xml version="1.0" encoding="UTF-8"?>\n<quiz>\n  <question type="essay">\n    <name>\n      <text>PyNote Interactive Notebook</text>\n    </name>\n    <questiontext format="html">\n      <text><![CDATA[${safeHtmlStub}]]></text>\n    </questiontext>\n    <responseformat>noinline</responseformat>\n    <responserequired>0</responserequired>\n  </question>\n</quiz>`;
+            downloadFile('pynote-moodle-export.xml', moodleXml);
+        };
+
+        // --- 6. DRAG & DROP BINDINGS ---
         const dropZone = document.getElementById('lhs-file-panel'), dropInd = document.getElementById('drop-indicator'), fileList = document.getElementById('file-list');
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); fileList.classList.add('hidden'); dropInd.classList.remove('hidden'); dropInd.classList.add('flex'); });
         dropZone.addEventListener('dragleave', () => { fileList.classList.remove('hidden'); dropInd.classList.add('hidden'); dropInd.classList.remove('flex'); });
@@ -351,13 +461,13 @@
             reader.readAsText(file);
         }
 
-        // --- 6. RHS CONFIGURATION BINDINGS ---
+        // --- 7. RHS CONFIGURATION BINDINGS ---
         ['kernel', 'topbar', 'question', 'readonly', 'noinsert', 'nodelete'].forEach(key => {
             const el = document.getElementById('config-' + key);
             el.addEventListener('change', (e) => {
                 const map = { kernel: 'kernelType', topbar: 'showTopBar', question: 'questionMode', readonly: 'isReadOnly', noinsert: 'disableInsertAll', nodelete: 'disableDelete' };
                 currentOptions[map[key]] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-                renderWorkspace();
+                if (syncCurrentState()) renderWorkspace();
             });
         });
 

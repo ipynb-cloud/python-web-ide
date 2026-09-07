@@ -4,7 +4,7 @@ class NotebookFormatConverter {
      */
     static serializeToFlat(cells) {
         let out = '';
-        cells.forEach((cell, index) => {
+        cells.forEach((cell) => {
             // Support passing either a DOM Cell element or a raw data object
             const data = typeof cell.toJSON === 'function' ? cell.toJSON() : cell;
             const type = data.type;
@@ -17,7 +17,7 @@ class NotebookFormatConverter {
             const metaStr = Object.keys(metaObj).length > 0 ? ` ${JSON.stringify(metaObj)}` : '';
             
             if (type === 'code') {
-                // Code cells preserve the author's internal newlines
+                // Code cells perfectly preserve the author's internal newlines
                 out += `# %% [code]${metaStr}\n${data.content || ''}\n\n`;
             } else {
                 // Markdown cells strip trailing newlines so the """ block is clean
@@ -26,8 +26,10 @@ class NotebookFormatConverter {
             }
         });
         
-        // Ensure the file ends cleanly with exactly 1 newline (POSIX standard)
-        return out.trimEnd() + '\n';
+        // CRITICAL FIX: Instead of trimEnd() (which deletes ALL intentional empty lines 
+        // in the final cell), we just slice off the very last \n from the loop's padding.
+        // This leaves exactly 1 POSIX newline at the EOF while protecting your cell padding!
+        return out.slice(0, -1);
     }
 
     /**
@@ -88,13 +90,13 @@ class NotebookFormatConverter {
         // --- The Cleanup Phase ---
         cells.forEach(c => {
             if (c.type === 'markdown' || c.type === 'text') {
-                // Aggressively strip quotes regardless of invisible Moodle spacing!
+                // Aggressively strip quotes regardless of invisible Moodle spacing
                 c.content = c.content.replace(/^\s*"""\s*\n?/, '').replace(/\n?\s*"""\s*$/, '');
                 // Markdown editors don't need trailing visual padding
                 c.content = c.content.replace(/\n+$/, ''); 
             } else if (c.type === 'code') {
                 // Strip EXACTLY the 1 or 2 newlines added by the serialization gap.
-                // This perfectly preserves any EXTRA empty lines the author intentionally left!
+                // This perfectly preserves any EXTRA empty lines the author intentionally left.
                 c.content = c.content.replace(/\n{1,2}$/, '');
             }
         });

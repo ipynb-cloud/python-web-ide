@@ -307,6 +307,12 @@ class CodeCellElement extends window.BaseNotebookCell {
             this.output = this.outputContent.innerHTML;
             this.applyHysteresis();
             this.dispatchAction('cell-content-changed'); 
+            // --- NEW: Jupyter-style Auto-Insert ---
+            // If this is the last cell and insertion is allowed, create a new one!
+            const coreConfig = (window.notebookCore && window.notebookCore.options) || {};
+            if (!this.nextElementSibling && !coreConfig.isReadOnly && !coreConfig.disableInsertAll) {
+                this.dispatchAction('cell-insert-below');
+            }
         }
     }
     

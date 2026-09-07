@@ -52,13 +52,13 @@ class CodeCellElement extends window.BaseNotebookCell {
                 return;
             }
 
+            // Grab the mode from your Moodle config script
             const coreConfig = (window.notebookCore && window.notebookCore.options) || {};
-            const acMode = coreConfig['autocomplete-mode'] || coreConfig.autocompleteMode || 'custom';
+            const acMode = coreConfig.autocompleteMode || 'custom';
 
             const customExtensions = [];
             
             if (cm6.basicSetup) customExtensions.push(cm6.basicSetup);
-            if (cm6.pynoteTheme) customExtensions.push(cm6.pynoteTheme);
 
             if (typeof cm6.python === 'function') {
                 customExtensions.push(cm6.python());
@@ -73,10 +73,11 @@ class CodeCellElement extends window.BaseNotebookCell {
                 customExtensions.push(cm6.state.EditorState.tabSize.of(4));
             }
 
-            // --- THE NEW BUNDLED AUTOCOMPLETE HOOK ---
-            if (cm6.getAutocompleteExtensions) {
-                customExtensions.push(...cm6.getAutocompleteExtensions(acMode));
+            // --- THE STANDALONE AUTOCOMPLETE HOOK ---
+            if (window.PyNoteAutocomplete) {
+                customExtensions.push(...window.PyNoteAutocomplete.getExtensions(acMode));
             } else {
+                // Failsafe if cm6-autocomplete.js fails to load: just map Tab to indent
                 if (cm6.keymap && cm6.commands && cm6.commands.indentMore && cm6.commands.indentLess) {
                     customExtensions.push(cm6.keymap.of([
                         { key: "Tab", run: cm6.commands.indentMore },
@@ -128,7 +129,6 @@ class CodeCellElement extends window.BaseNotebookCell {
             setTimeout(() => { this.dispatchAction('cell-height-changed'); }, 50);
 
         }, 0);
-
         this.buildOutputUI();
         
         this.appendChild(this.outputWrapper); 

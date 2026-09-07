@@ -53,13 +53,14 @@
     <input type="file" id="file-upload" class="hidden" accept=".py,.txt,.json">
 
     <!-- Native Tailwind Menu Bar -->
+<!-- Native Tailwind Menu Bar (Click-to-Open) -->
     <nav class="bg-slate-800 text-slate-200 flex items-center px-2 py-1 text-[13px] relative z-50 shadow-md font-sans select-none">
         <div class="font-bold px-3 text-white tracking-tight">PyNote</div>
         
         <!-- File Menu -->
-        <div class="relative group">
-            <button class="px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-default outline-none">File</button>
-            <div class="absolute left-0 mt-0 w-56 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden group-hover:block py-1">
+        <div class="relative">
+            <button id="menu-btn-file" class="menu-btn px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-pointer outline-none">File</button>
+            <div id="dropdown-file" class="dropdown-menu absolute left-0 mt-0 w-56 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden py-1">
                 <a href="#" id="menu-file-load" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white">Open Notebook...</a>
                 <hr class="border-slate-200 my-1">
                 <a href="#" id="menu-file-save-flat" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex justify-between">
@@ -72,9 +73,9 @@
         </div>
 
         <!-- Settings Menu -->
-        <div class="relative group">
-            <button class="px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-default outline-none">Settings</button>
-            <div class="absolute left-0 mt-0 w-64 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden group-hover:block py-1">
+        <div class="relative">
+            <button id="menu-btn-settings" class="menu-btn px-3 py-1 hover:bg-slate-700 hover:text-white rounded cursor-pointer outline-none">Settings</button>
+            <div id="dropdown-settings" class="dropdown-menu absolute left-0 mt-0 w-64 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md hidden py-1">
                 <a href="#" id="menu-setting-question" class="block px-4 py-1.5 hover:bg-blue-500 hover:text-white flex items-center justify-between">
                     <span>Question Mode (Lock UI)</span>
                     <span id="check-question" class="text-blue-500 font-bold hidden">✓</span>
@@ -103,6 +104,42 @@
     </div>
 
     <script>
+        // --- 0. MENU TOGGLE LOGIC ---
+        const fileBtn = document.getElementById('menu-btn-file');
+        const fileDropdown = document.getElementById('dropdown-file');
+        const settingsBtn = document.getElementById('menu-btn-settings');
+        const settingsDropdown = document.getElementById('dropdown-settings');
+
+        function closeAllMenus() {
+            fileDropdown.classList.add('hidden');
+            settingsDropdown.classList.add('hidden');
+            fileBtn.classList.remove('bg-slate-700', 'text-white');
+            settingsBtn.classList.remove('bg-slate-700', 'text-white');
+        }
+
+        function toggleMenu(btn, dropdown, event) {
+            event.stopPropagation();
+            const isHidden = dropdown.classList.contains('hidden');
+            closeAllMenus();
+            if (isHidden) {
+                dropdown.classList.remove('hidden');
+                btn.classList.add('bg-slate-700', 'text-white');
+            }
+        }
+
+        fileBtn.onclick = (e) => toggleMenu(fileBtn, fileDropdown, e);
+        settingsBtn.onclick = (e) => toggleMenu(settingsBtn, settingsDropdown, e);
+
+        // Close menus when clicking anywhere else on the page
+        document.addEventListener('click', () => closeAllMenus());
+        
+        // Prevent closing when clicking inside a dropdown itself
+        document.querySelectorAll('.dropdown-menu').forEach(menu => {
+            menu.addEventListener('click', (e) => {
+                // If they clicked a link, we DO want it to close. 
+                if(e.target.tagName !== 'A') e.stopPropagation();
+            });
+        });
         // --- 1. CORE INITIALIZATION ---
         
         let currentOptions = {

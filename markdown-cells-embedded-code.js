@@ -5,10 +5,8 @@
 if (customElements.get('notebook-markdown-cell')) {
     const MarkdownCell = customElements.get('notebook-markdown-cell');
 
-    // Override the vanilla render method
     MarkdownCell.prototype.renderMarkdown = function() {
         
-        // 1. Perform vanilla Markdown parsing
         try {
             this.viewDiv.innerHTML = (typeof marked !== 'undefined') 
                 ? marked.parse(this.content || '*Empty Markdown cell*') 
@@ -18,7 +16,6 @@ if (customElements.get('notebook-markdown-cell')) {
             this.viewDiv.innerText = this.content || '';
         }
         
-        // 2. Upgrade all <pre> tags to CM6 instances
         const preTags = this.viewDiv.querySelectorAll('pre');
         preTags.forEach(pre => {
             const codeEl = pre.querySelector('code');
@@ -73,7 +70,6 @@ if (customElements.get('notebook-markdown-cell')) {
                 pre.appendChild(fallbackCode);
             }
 
-            // 3. Inject the "Use" Button with focus-stealing prevention
             const btn = document.createElement('button');
             btn.className = 'absolute top-2 right-2 px-2 py-1 bg-slate-700/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[11px] font-sans font-medium transition-all shadow-sm flex items-center gap-1.5 backdrop-blur-sm opacity-0 group-hover:opacity-100 z-10 border border-slate-600';
             
@@ -83,25 +79,30 @@ if (customElements.get('notebook-markdown-cell')) {
 
             btn.innerHTML = `${defaultIcon} <span>Use</span>`;
 
-            // CRITICAL FIX: Stop the browser from moving focus away from the active editor
-            btn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-            });
+            // Prevent browser from moving focus away from the active code cell
+            btn.addEventListener('mousedown', (e) => { e.preventDefault(); });
             
             btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation(); 
                 
                 const editor = window.notebookCore ? window.notebookCore.activeCodeEditor : null;
-                const isReadOnly = window.notebookCore ? window.notebookCore.options.isReadOnly : false;
+                const isReadOnlyGlobal = window.notebookCore ? window.notebookCore.options.isReadOnly : false;
+                
+                // Only check if the DESTINATION editor is read-only.
+                const isDestLocked = editor ? (editor.state.readOnly || false) : false;
 
-                if (editor && !isReadOnly && !this.isLocked) {
+                if (editor && !isReadOnlyGlobal && !isDestLocked) {
                     const selection = editor.state.selection.main;
+                    const insertText = codeText + '\n'; 
+                    
                     editor.dispatch({
-                        changes: { from: selection.from, to: selection.to, insert: codeText },
-                        selection: { anchor: selection.from + codeText.length }
+                        changes: { from: selection.from, to: selection.to, insert: insertText },
+                        selection: { anchor: selection.from + insertText.length }
                     });
+                    
                     editor.focus(); 
+                    
                     btn.innerHTML = `${insertIcon} <span class="text-green-400">Inserted</span>`;
                 } else {
                     const copyFallback = (text) => {
@@ -127,7 +128,6 @@ if (customElements.get('notebook-markdown-cell')) {
             pre.appendChild(btn);
         });
 
-        // 4. Trigger MathJax
         if (window.MathJaxHelper) {
             window.MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
         }

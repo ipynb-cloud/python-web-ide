@@ -22,30 +22,55 @@ class NotebookFormatConverter {
             }
         });
         
-        // Join the cells with exactly one blank line (\n\n) as a spacer
-        return serializedCells.join('\n\n');
+        // 1. Join cells with exactly one blank line (\n\n) as a structural spacer.
+        // 2. Wrap the entire payload in boundary markers to prevent the browser's 
+        //    <pre> innerText from stripping trailing newlines off the final cell.
+        return '# %% [pynote-start]\n' + serializedCells.join('\n\n') + '\n# %% [pynote-end]';
     }
 
     /**
      * Converts a .pynote.py Flatfile string into a Native PyNote Object Array
      */
     static deserializeFromFlat(payload, options = {}) {
-        if (!payload || !payload.includes('# %%')) {
-            return [{ type: 'code', content: payload || '', isLocked: false, isEditing: false }];
+        if (!payload) {
+            return [{ type: 'code', content: '', isLocked: false, isEditing: false }];
         }
         
-        const rawLines = payload.split(/\r?\n/);
+        // --- PROTECTIVE MARKER EXTRACTION ---
+        let safePayload = payload;
+        const startMarker = '# %% [pynote-start]\n'; // Note the explicit newline
+        const endMarker = '\n# %% [pynote-end]';     // Note the explicit newline
+        
+        const startIndex = payload.indexOf(startMarker);
+        const endIndex = payload.lastIndexOf(endMarker);
+
+        // If the shell exists, slicing exactly between these indices perfectly isolates 
+        // the original string, discarding the markers and their attachment newlines.
+        if (startIndex > -1 && endIndex > -1 && endIndex > startIndex) {
+            safePayload = payload.substring(startIndex + startMarker.length, endIndex);
+        }
+
+        if (!safePayload.includes('# %%')) {
+            return [{ type: 'code', content: safePayload || '', isLocked: false, isEditing: false }];
+        }
+        
+        const rawLines = safePayload.split(/\r?\n/);
         const cells = [];
         let currentCell = null;
         
         for (let i = 0; i < rawLines.length; i++) {
             const line = rawLines[i];
+            
+            // Failsafe: Ignore any mangled legacy markers that survived the extraction
+            if (line.includes('[pynote-start]') || line.includes('[pynote-end]')) {
+                continue; 
+            }
+
             const markerMatch = line.match(/^#\s*%%(.*)$/);
             
             if (markerMatch) {
                 if (currentCell) {
-                    // We hit a new cell header. If the line immediately preceding this 
-                    // header is completely empty, it is our structural spacer. Pop it!
+                    // Structural spacer pop
                     if (currentCell.lines.length > 0 && currentCell.lines[currentCell.lines.length - 1] === '') {
                         currentCell.lines.pop();
                     }
@@ -76,7 +101,6 @@ class NotebookFormatConverter {
                     isLocked = true;
                 }
                 
-                // Track lines in an array instead of a messy string accumulator
                 currentCell = { type, lines: [], isLocked, isHidden, isEditing: false };
             } else {
                 if (!currentCell) {
@@ -87,8 +111,6 @@ class NotebookFormatConverter {
         }
         
         if (currentCell) {
-            // The final cell has no cell header beneath it, so we don't pop anything.
-            // Whatever trailing newlines exist (or don't) are exactly what the user authored.
             currentCell.content = currentCell.lines.join('\n');
             cells.push(currentCell);
         }
@@ -99,11 +121,10 @@ class NotebookFormatConverter {
                 c.content = c.content.replace(/^\s*"""\s*\n?/, '').replace(/\n?\s*"""\s*$/, '');
                 c.content = c.content.replace(/\n+$/, ''); 
             }
-            // Code cells require ZERO regex cleanup now! 
             delete c.lines; 
         });
         
-        return cells.length ? cells : [{ type: 'code', content: payload }];
+        return cells.length ? cells : [{ type: 'code', content: safePayload }];
     }
 }
 

@@ -5,16 +5,13 @@ class MarkdownCellElement extends window.BaseNotebookCell {
     }
 
     mountContent(container) {
-        // Locked markdown cells force themselves into view mode permanently
         if (this.isLocked) this.isEditing = false;
 
         this.viewDiv = document.createElement('div');
         this.viewDiv.className = `markdown-body cursor-pointer min-h-[1.75rem] flex-1 ${this.isEditing ? 'hidden' : ''}`;
-        
-        this.renderMarkdown();
 
         this.viewDiv.addEventListener('dblclick', () => {
-            if (this.isLocked) return; // Prevent unlocking via double click
+            if (this.isLocked) return;
             this.isEditing = true;
             this.toggleMode();
         });
@@ -29,7 +26,7 @@ class MarkdownCellElement extends window.BaseNotebookCell {
         
         this.textarea.addEventListener('input', () => {
             this.content = this.textarea.value;
-            autosize.update(this.textarea);
+            if (typeof autosize !== 'undefined') autosize.update(this.textarea);
             this.dispatchAction('cell-content-changed');
         });
 
@@ -49,75 +46,79 @@ class MarkdownCellElement extends window.BaseNotebookCell {
         container.appendChild(this.viewDiv);
         container.appendChild(this.editDiv);
 
+        this.renderMarkdown();
         this.updateActionButton(this.getActionButtonConfig());
 
         setTimeout(() => { 
-            autosize(this.textarea);
+            if (typeof autosize !== 'undefined') autosize(this.textarea);
             if (this.isEditing && !this.isLocked) this.textarea.focus(); 
         }, 0);
     }
 
-renderMarkdown() {
-        this.viewDiv.innerHTML = marked.parse(this.content || '*Empty Markdown cell*');
+    renderMarkdown() {
+        try {
+            this.viewDiv.innerHTML = (typeof marked !== 'undefined') 
+                ? marked.parse(this.content || '*Empty Markdown cell*') 
+                : (this.content || '');
+        } catch (err) {
+            console.warn("Markdown parse error:", err);
+            this.viewDiv.innerText = this.content || '';
+        }
         
-        // Inject CM6 instances and Smart Code Buttons
         const preTags = this.viewDiv.querySelectorAll('pre');
         preTags.forEach(pre => {
             const codeEl = pre.querySelector('code');
             if (!codeEl) return;
             
-            // Extract the raw text and detect language
             const codeText = codeEl.innerText.trim();
             const languageMatch = codeEl.className.match(/language-(\w+)/);
             const lang = languageMatch ? languageMatch[1] : 'text';
 
-            // Clear standard Markdown formatting and prep for CM6
             pre.innerHTML = '';
             pre.style.position = 'relative';
-            pre.style.padding = '0'; // CM6 will handle its own internal padding
-            pre.style.overflow = 'hidden'; // Let CM6 handle internal scrolling
+            pre.style.padding = '0';
+            pre.style.overflow = 'hidden';
             pre.classList.add('group');
 
-            // 1. Initialize CodeMirror 6 Block
-            if (typeof cm6 !== 'undefined') {
-                const customExtensions = [];
-                if (cm6.basicSetup) customExtensions.push(cm6.basicSetup);
+            try {
+                if (typeof cm6 !== 'undefined') {
+                    const customExtensions = [];
+                    if (cm6.basicSetup) customExtensions.push(cm6.basicSetup);
 
-                const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
-                const EditorState = cm6.EditorState || (cm6.state ? cm6.state.EditorState : null);
+                    const EditorView = cm6.EditorView || (cm6.view ? cm6.view.EditorView : null);
+                    const EditorState = cm6.EditorState || (cm6.state ? cm6.state.EditorState : null);
 
-                // Hide gutters and style to match markdown
-                if (EditorView && EditorView.theme) {
-                    customExtensions.push(EditorView.theme({
-                        ".cm-gutters": { display: "none" },
-                        "&": { backgroundColor: "transparent" },
-                        ".cm-scroller": { fontFamily: "'Fira Code', monospace", fontSize: "0.9em", padding: "1em" }
-                    }));
+                    if (EditorView && EditorView.theme) {
+                        customExtensions.push(EditorView.theme({
+                            ".cm-gutters": { display: "none !important" },
+                            "&": { backgroundColor: "transparent" },
+                            ".cm-scroller": { fontFamily: "'Fira Code', monospace", fontSize: "0.9em", padding: "1em" }
+                        }));
+                    }
+
+                    if (lang === 'python' && typeof cm6.python === 'function') {
+                        customExtensions.push(cm6.python());
+                    } else if (lang === 'python' && cm6.langPython && typeof cm6.langPython.python === 'function') {
+                        customExtensions.push(cm6.langPython.python());
+                    }
+
+                    if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
+                    if (EditorState && EditorState.readOnly) customExtensions.push(EditorState.readOnly.of(true));
+
+                    const editorView = cm6.createEditorView(undefined, pre);
+                    const state = cm6.createEditorState(codeText, { extensions: customExtensions });
+                    editorView.setState(state);
+                } else {
+                    throw new Error("cm6 unavailable");
                 }
-
-                // Apply Syntax Highlighting
-                if (lang === 'python' && typeof cm6.python === 'function') {
-                    customExtensions.push(cm6.python());
-                } else if (lang === 'python' && cm6.langPython && typeof cm6.langPython.python === 'function') {
-                    customExtensions.push(cm6.langPython.python());
-                }
-
-                // Force strictly read-only
-                if (EditorView && EditorView.editable) customExtensions.push(EditorView.editable.of(false));
-                if (EditorState && EditorState.readOnly) customExtensions.push(EditorState.readOnly.of(true));
-
-                const editorView = cm6.createEditorView(undefined, pre);
-                const state = cm6.createEditorState(codeText, { extensions: customExtensions });
-                editorView.setState(state);
-            } else {
-                // Fallback if cm6 is unavailable
+            } catch (err) {
+                pre.innerHTML = '';
                 const fallbackCode = document.createElement('code');
                 fallbackCode.innerText = codeText;
                 pre.style.padding = '1em';
                 pre.appendChild(fallbackCode);
             }
 
-            // 2. Attach the "Use" Button overlay
             const btn = document.createElement('button');
             btn.className = 'absolute top-2 right-2 px-2 py-1 bg-slate-700/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-sans font-medium transition-all shadow-sm flex items-center gap-1.5 backdrop-blur-sm opacity-0 group-hover:opacity-100 z-10 border border-slate-600';
             
@@ -127,7 +128,7 @@ renderMarkdown() {
 
             btn.innerHTML = `${defaultIcon} <span>Use</span>`;
             
-            const actionHandler = (e) => {
+            btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 
@@ -165,21 +166,28 @@ renderMarkdown() {
                 setTimeout(() => { btn.innerHTML = `${defaultIcon} <span>Use</span>`; }, 2000);
             };
 
-            btn.onclick = actionHandler;
             btn.ondblclick = (e) => e.stopPropagation();
-            
             pre.appendChild(btn);
         });
 
-        MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
+        if (window.MathJaxHelper) {
+            window.MathJaxHelper.queue(this.viewDiv, () => this.dispatchAction('cell-height-changed'));
+        }
     }
+
     getActionButtonConfig() {
-        if (this.isLocked) return null; // No action button on locked markdown
+        if (this.isLocked) return null;
 
         if (this.isEditing) {
-            return { icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`, title: 'Render Markdown (Shift+Enter)' };
+            return { 
+                icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`, 
+                title: 'Render Markdown (Shift+Enter)' 
+            };
         } else {
-            return { icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>`, title: 'Edit Markdown' };
+            return { 
+                icon: `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>`, 
+                title: 'Edit Markdown' 
+            };
         }
     }
 
@@ -199,7 +207,7 @@ renderMarkdown() {
             this.editDiv.classList.remove('hidden');
             this.editDiv.classList.add('flex');
             setTimeout(() => { 
-                autosize.update(this.textarea); 
+                if (typeof autosize !== 'undefined') autosize.update(this.textarea); 
                 this.textarea.focus(); 
             }, 0);
         } else {
@@ -212,9 +220,12 @@ renderMarkdown() {
     }
 
     refresh() { 
-        if (this.textarea) autosize.update(this.textarea); 
+        if (this.textarea && typeof autosize !== 'undefined') autosize.update(this.textarea); 
         this.dispatchAction('cell-height-changed');
     }
-    focusCell() { if(this.isEditing && this.textarea && !this.isLocked) this.textarea.focus(); }
+    
+    focusCell() { 
+        if (this.isEditing && this.textarea && !this.isLocked) this.textarea.focus(); 
+    }
 }
 customElements.define('notebook-markdown-cell', MarkdownCellElement);

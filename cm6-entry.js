@@ -1,5 +1,3 @@
-// cm6-entry.js (Your bundler entry point)
-
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import { python } from "@codemirror/lang-python";
@@ -8,21 +6,10 @@ import { keymap } from "@codemirror/view";
 import { indentMore, indentLess } from "@codemirror/commands";
 import { search, openSearchPanel } from "@codemirror/search";
 import { autocompletion, acceptCompletion } from "@codemirror/autocomplete";
+
+// Import your custom logic[cite: 11]
 import { customVariableCompletions } from './cm6-autocomplete.js'; 
 
-// 1. Unified PyNote Theme
-const pynoteTheme = EditorView.theme({
-    "&": { backgroundColor: "transparent" },
-    ".cm-scroller": { fontFamily: "'Fira Code', monospace", fontSize: "14px" },
-    "&.cm-focused .cm-cursor": { borderLeftColor: "#3b82f6" },
-    "&.cm-focused .cm-selectionBackground, ::selection": { backgroundColor: "#bfdbfe" },
-    ".cm-activeLine": { backgroundColor: "transparent" },
-    ".cm-activeLineGutter": { backgroundColor: "transparent" },
-    ".cm-gutters": { backgroundColor: "transparent", borderRight: "none", color: "#94a3b8" },
-    ".cm-tooltip-autocomplete": { fontFamily: "'Fira Code', monospace", fontSize: "13px" }
-});
-
-// 2. The Autocomplete Router
 function getAutocompleteExtensions(mode = "custom") {
   const baseKeymap = [
     { key: "Tab", run: (view) => acceptCompletion(view) || indentMore(view) },
@@ -34,7 +21,9 @@ function getAutocompleteExtensions(mode = "custom") {
       keymap.of([
         { key: "Tab", run: indentMore },
         { key: "Shift-Tab", run: indentLess }
-      ])
+      ]),
+      // Overrides basicSetup to fully suppress popups
+      autocompletion({ override: [() => null] })
     ];
   }
 
@@ -43,7 +32,7 @@ function getAutocompleteExtensions(mode = "custom") {
       keymap.of(baseKeymap),
       autocompletion({
         override: [customVariableCompletions],
-        activateOnTyping: true, // Triggers only when custom function allows (>= 4 chars)
+        activateOnTyping: true, 
         maxRenderedOptions: 10
       })
     ];
@@ -59,29 +48,23 @@ function getAutocompleteExtensions(mode = "custom") {
   return [keymap.of(baseKeymap)];
 }
 
-// 3. Expose to global window
+// Optional: A unified PyNote Theme to keep CSS minimal
+const pynoteTheme = EditorView.theme({
+    "&": { backgroundColor: "transparent" },
+    ".cm-scroller": { fontFamily: "'Fira Code', monospace", fontSize: "14px" },
+    "&.cm-focused .cm-cursor": { borderLeftColor: "#3b82f6" },
+    "&.cm-focused .cm-selectionBackground, ::selection": { backgroundColor: "#bfdbfe" },
+    ".cm-activeLine": { backgroundColor: "transparent" },
+    ".cm-activeLineGutter": { backgroundColor: "transparent" },
+    ".cm-gutters": { backgroundColor: "transparent", borderRight: "none", color: "#94a3b8" }
+});
+
 window.cm6 = {
-    // Core Classes
-    EditorView,
-    EditorState,
+    EditorView, EditorState, basicSetup, python,
+    language: { indentUnit }, state: { EditorState }, view: { EditorView },
+    keymap, commands: { indentMore, indentLess }, search, openSearchPanel,
     
-    // Extensions & Language
-    basicSetup,
-    python,
-    
-    // Formatting & Indentation
-    language: { indentUnit },
-    state: { EditorState },
-    view: { EditorView },
-    
-    // Keyboard Bindings & Search
-    keymap,
-    commands: { indentMore, indentLess },
-    search,
-    openSearchPanel,
-    autocompletion,
-    
-    // PyNote Custom Helpers
+    // Expose the router and theme to your notebook!
     getAutocompleteExtensions,
     pynoteTheme,
     

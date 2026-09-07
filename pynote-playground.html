@@ -243,6 +243,84 @@
             window.requestAnimationFrame(sendHeight);
         }).observe(document.body);
 
+// --- 1. FILE DOWNLOADING ---
+        function downloadFile(filename, content) {
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        }
+
+        document.getElementById('menu-file-save-flat').onclick = (e) => {
+            e.preventDefault();
+            // Leverages your beautiful Flatfile serialization!
+            const flatData = window.notebookCore.serializeToFlat();
+            downloadFile('notebook.pynote.py', flatData);
+        };
+
+        document.getElementById('menu-file-save-json').onclick = (e) => {
+            e.preventDefault();
+            // Native array export
+            const jsonData = JSON.stringify(window.notebookCore.toJSON(), null, 2);
+            downloadFile('notebook.json', jsonData);
+        };
+
+        // --- 2. FILE UPLOADING ---
+        const fileInput = document.getElementById('file-upload');
+        document.getElementById('menu-file-load').onclick = (e) => {
+            e.preventDefault();
+            fileInput.click(); // Trigger native OS file picker
+        };
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const content = event.target.result;
+                let parsedCells;
+                
+                // Try JSON first, fallback to Flatfile parsing
+                try {
+                    parsedCells = JSON.parse(content);
+                } catch (err) {
+                    parsedCells = window.notebookCore.deserializeFromFlat(content);
+                }
+                
+                window.notebookCore.loadData(parsedCells);
+                fileInput.value = ''; // Reset input so the same file can be uploaded again
+            };
+            reader.readAsText(file);
+        });
+
+        // --- 3. CONFIGURATION TOGGLES ---
+        // To change core layout configs on the fly, we re-instantiate the notebook 
+        // on the same div, passing the existing data back in.
+        function toggleConfiguration(settingKey) {
+            // Grab current state
+            const currentData = window.notebookCore.toJSON();
+            const currentOptions = window.notebookCore.options;
+            
+            // Toggle the setting
+            currentOptions[settingKey] = !currentOptions[settingKey];
+            
+            // Re-instantiate over the existing DOM element
+            window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
+            window.notebookCore.loadData(currentData);
+            
+            // Update menu checkmarks
+            document.getElementById('check-question').classList.toggle('hidden', !currentOptions.questionMode);
+            document.getElementById('check-readonly').classList.toggle('hidden', !currentOptions.isReadOnly);
+        }
+
+        document.getElementById('menu-setting-question').onclick = (e) => { e.preventDefault(); toggleConfiguration('questionMode'); };
+        document.getElementById('menu-setting-readonly').onclick = (e) => { e.preventDefault(); toggleConfiguration('isReadOnly'); };
+        
     </script>
 </body>
 </html>

@@ -32,7 +32,7 @@ self.onmessage = async function(e) {
                     });
 
                     if (msg.config.preloadMatplotlib) {
-                        self.postMessage({ id: msg.id, type: 'status', status: 'loading-packages' });
+                        self.postMessage({ id: msg.id, type: 'status', status: 'packages' }); 
                         await pyodide.loadPackage(['matplotlib', 'numpy']);
                         
                         // Setup matplotlib headless SVG rendering

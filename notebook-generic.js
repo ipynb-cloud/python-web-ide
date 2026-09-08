@@ -27,35 +27,37 @@ class PyodideWorkerKernel {
         this.kernelMode = options.kernelMode || 'local'; 
     }
 
-    init(statusCallback) {
-        this.statusCallback = statusCallback;
-        const initId = this.generateId();
+async init(statusCallback) {
+        statusCallback('loading');
         
-        new Promise((resolve, reject) => {
-            this.callbacks[initId] = { resolve, reject };
-        });
+        try {
+            // Wait for the Pyodide script to physically load in the DOM
+            if (typeof loadPyodide === 'undefined') {
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js";
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error("Failed to load Pyodide CDN"));
+                    document.head.appendChild(script);
+                });
+            }
 
-        if (this.kernelMode === 'local') {
-            this.worker = new Worker('pyodide-worker.js');
-            this.worker.onmessage = (e) => this.handleMessage(e.data);
-        } else {
-            this.hostListener = (e) => {
-                if (e.data.type === 'KERNEL_REPLY') this.handleMessage(e.data.payload);
-            };
-            window.addEventListener('message', this.hostListener);
+            // Script is loaded, initialize the Pyodide environment
+            this.pyodide = await loadPyodide({
+                stdout: (text) => this.writeOutput(text, 'text-slate-700'),
+                stderr: (text) => this.writeOutput(text, 'text-red-600')
+            });
             
-            this.worker = {
-                postMessage: (msg) => window.parent.postMessage({ type: 'KERNEL_REQ', payload: msg }, '*'),
-                terminate: () => window.removeEventListener('message', this.hostListener)
-            };
+            statusCallback('packages');
+            await this.pyodide.loadPackage(['micropip']);
+            
+            this.isReady = true;
+            statusCallback('ready');
+            
+        } catch (err) {
+            console.error("Pyodide Initialization Error:", err);
+            statusCallback('error');
         }
-        
-        this.worker.postMessage({ 
-            id: initId,
-            widgetId: this.widgetId,
-            action: 'INIT', 
-            config: this.options 
-        });
     }
 
     generateId() { return Math.random().toString(36).substring(2, 10); }

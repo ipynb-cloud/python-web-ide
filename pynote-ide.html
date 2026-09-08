@@ -325,7 +325,17 @@
                 if (currentOptions.showTopBar) header.classList.remove('hidden'); else header.classList.add('hidden');
                 document.getElementById('kernel-selector').value = currentOptions.kernelType;
 
-                document.getElementById('pynote-mount-point').innerHTML = '';
+                // --- 1. MEMORY CLEANUP: Destroy the old kernel worker so they don't pile up! ---
+                if (window.notebookCore && window.notebookCore.kernel && window.notebookCore.kernel.destroy) {
+                    window.notebookCore.kernel.destroy();
+                }
+
+                // --- 2. LISTENER CLEANUP: Wipe ghost event listeners by replacing the DOM node ---
+                const oldMount = document.getElementById('pynote-mount-point');
+                const newMount = oldMount.cloneNode(false);
+                oldMount.parentNode.replaceChild(newMount, oldMount);
+
+                // 3. Boot fresh environment
                 window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
                 const parsedCells = window.notebookCore.deserializeFromFlat(virtualFS[activeFileName] || '');
                 window.notebookCore.loadData(parsedCells);
@@ -338,7 +348,6 @@
                     rawTextarea.value = virtualFS[activeFileName] || '';
                 } else if (currentViewMode === 'jupyter') {
                     document.getElementById('raw-editor-title').innerText = activeFileName + " (Jupyter JSON Format)";
-                    // Must use the static NotebookFormatConverter to parse the flatfile without mounting to DOM
                     const parsedCells = NotebookFormatConverter.deserializeFromFlat(virtualFS[activeFileName] || '');
                     const cells = parsedCells.map(c => ({
                         cell_type: c.type === 'code' ? 'code' : 'markdown',

@@ -278,11 +278,16 @@ class CodeCellElement extends window.BaseNotebookCell {
     }
 
     async handleActionClick() {
+        // 1. EXECUTION LOCK: Prevent double-clicks or rapid Shift+Enters from running twice!
+        if (this.isExecuting) return;
+        this.isExecuting = true;
+
         if (!window.notebookCore.kernel || !window.notebookCore.kernel.isReady) {
             this.outputContent.innerHTML = `<span class="text-orange-500 font-semibold">Kernel is still initializing... Please wait.</span>`;
             this.outputWrapper.classList.remove('hidden');
             this.outputWrapper.classList.add('flex');
             this.dispatchAction('cell-height-changed');
+            this.isExecuting = false; // Release lock
             return;
         }
         
@@ -307,12 +312,15 @@ class CodeCellElement extends window.BaseNotebookCell {
             this.output = this.outputContent.innerHTML;
             this.applyHysteresis();
             this.dispatchAction('cell-content-changed'); 
-            // --- NEW: Jupyter-style Auto-Insert ---
-            // If this is the last cell and insertion is allowed, create a new one!
+            
+            // Jupyter-style Auto-Insert: Check if it is STILL the last cell
             const coreConfig = (window.notebookCore && window.notebookCore.options) || {};
             if (!this.nextElementSibling && !coreConfig.isReadOnly && !coreConfig.disableInsertAll) {
                 this.dispatchAction('cell-insert-below');
             }
+            
+            // 2. RELEASE LOCK: Execution is entirely finished
+            this.isExecuting = false; 
         }
     }
     

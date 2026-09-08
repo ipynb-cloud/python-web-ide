@@ -31,7 +31,7 @@ async init(statusCallback) {
         statusCallback('loading');
         
         try {
-            // Wait for the Pyodide script to physically load in the DOM
+            // 1. Load the Pyodide script only once
             if (typeof loadPyodide === 'undefined') {
                 await new Promise((resolve, reject) => {
                     const script = document.createElement('script');
@@ -42,14 +42,22 @@ async init(statusCallback) {
                 });
             }
 
-            // Script is loaded, initialize the Pyodide environment
-            this.pyodide = await loadPyodide({
-                stdout: (text) => this.writeOutput(text, 'text-slate-700'),
-                stderr: (text) => this.writeOutput(text, 'text-red-600')
-            });
+            // 2. Initialize the Pyodide WebAssembly module ONLY ONCE per page!
+            if (!window.globalPyodideInstance) {
+                window.globalPyodideInstance = await loadPyodide({
+                    indexURL: "https://cdn.jsdelivr.net/pyodide/v314.0.6/full/" // Explicit path prevents worker routing errors
+                });
+                
+                statusCallback('packages');
+                await window.globalPyodideInstance.loadPackage(['micropip']);
+            }
+
+            // 3. Attach the cached instance to this specific kernel
+            this.pyodide = window.globalPyodideInstance;
             
-            statusCallback('packages');
-            await this.pyodide.loadPackage(['micropip']);
+            // 4. Dynamically re-bind the stdout/stderr to THIS specific notebook's output
+            this.pyodide.setStdout({ batched: (text) => this.writeOutput(text, 'text-slate-700') });
+            this.pyodide.setStderr({ batched: (text) => this.writeOutput(text, 'text-red-600') });
             
             this.isReady = true;
             statusCallback('ready');

@@ -1,5 +1,5 @@
 // pyodide-worker.js
-importScripts("https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js");
+importScripts("https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js");
 
 let pyodide = null;
 let currentExecId = null;

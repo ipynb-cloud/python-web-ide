@@ -260,44 +260,39 @@
             e.preventDefault();
             if (!syncCurrentState()) return;
 
-            // Optional: Give the user visual feedback that the network request is happening
             const btnSpan = e.currentTarget.querySelector('span');
             const originalText = btnSpan.innerText;
             btnSpan.innerText = "Fetching template...";
 
             try {
-                // 1. Fetch the live template from your hosting server
                 const response = await fetch('https://python-web-ide.pages.dev/moodle-template.xml');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 let templateStr = await response.text();
 
-                // 2. Prepare the data
                 let flatData = virtualFS[activeFileName];
-                
-                // Moodle wraps our entire payload in a CDATA block. 
-                // We must safely escape any literal CDATA closing tags in the student's code.
                 flatData = flatData.replace(/]]>/g, ']]]]><![CDATA[>');
 
-                // Format the JSON nicely so it looks clean inside the HTML
                 const configJson = JSON.stringify({
                     showTopBar: currentOptions.showTopBar,
                     kernelType: currentOptions.kernelType,
                     autocompleteMode: currentOptions.autocompleteMode,
                     questionMode: currentOptions.questionMode
                 }, null, 8).trim();
+                
+                // Generate a random 6-character ID for this specific export
+                const randomId = Math.random().toString(36).substring(2, 8);
 
-                // 3. Inject the data into the template's placeholders
-                templateStr = templateStr.replace('{{PYNOTE_FLATFILE}}', flatData);
-                templateStr = templateStr.replace('{{PYNOTE_CONFIG}}', configJson);
+                // Inject all data into the remote template
+                templateStr = templateStr.replace(/{{PYNOTE_FLATFILE}}/g, flatData);
+                templateStr = templateStr.replace(/{{PYNOTE_CONFIG}}/g, configJson);
+                templateStr = templateStr.replace(/{{UNIQUE_ID}}/g, randomId);
 
-                // 4. Trigger the download!
                 downloadFile('pynote-moodle-export.xml', templateStr);
                 
             } catch (err) {
                 console.error("Template Fetch Error:", err);
-                alert("Failed to fetch the Moodle template from python-web-ide.pages.dev. Please check your connection.");
+                alert("Failed to fetch the Moodle template. Please check your connection.");
             } finally {
-                // Restore button text
                 btnSpan.innerText = originalText;
             }
         };

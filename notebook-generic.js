@@ -27,15 +27,18 @@ class PyodideWorkerKernel {
         this.kernelMode = options.kernelMode || 'local'; 
     }
 
-async init(statusCallback) {
+    async init(statusCallback) {
         statusCallback('loading');
         
         try {
+            // --- THE FIX: Define the base URL once so they never mismatch! ---
+            const pyodideBaseURL = "https://cdn.jsdelivr.net/pyodide/v314.0.6/full/";
+            
             // 1. Load the Pyodide script only once
             if (typeof loadPyodide === 'undefined') {
                 await new Promise((resolve, reject) => {
                     const script = document.createElement('script');
-                    script.src = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js";
+                    script.src = pyodideBaseURL + "pyodide.js";
                     script.onload = resolve;
                     script.onerror = () => reject(new Error("Failed to load Pyodide CDN"));
                     document.head.appendChild(script);
@@ -45,7 +48,7 @@ async init(statusCallback) {
             // 2. Initialize the Pyodide WebAssembly module ONLY ONCE per page!
             if (!window.globalPyodideInstance) {
                 window.globalPyodideInstance = await loadPyodide({
-                    indexURL: "https://cdn.jsdelivr.net/pyodide/v314.0.6/full/" // Explicit path prevents worker routing errors
+                    indexURL: pyodideBaseURL // This must perfectly match the script path
                 });
                 
                 statusCallback('packages');

@@ -40,7 +40,8 @@ class PyodideWorkerKernel {
             }
 
             // 2. Spawn the background worker
-            this.worker = new Worker('pyodide-worker.js');
+            // --- THE FIX: Add the { type: 'module' } flag ---
+            this.worker = new Worker('pyodide-worker.js', { type: 'module' });
 
             // 3. Listen for messages coming back from the worker
             this.worker.onmessage = (e) => {

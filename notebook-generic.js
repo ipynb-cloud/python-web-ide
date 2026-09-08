@@ -13,6 +13,9 @@ window.MathJaxHelper = {
     }
 };
 
+// --- GLOBAL CONFIGURATION ---
+const PYODIDE_CDN_URL = "https://cdn.jsdelivr.net/pyodide/v314.0.6/full/";
+
 class PyodideWorkerKernel {
     constructor(options = {}) {
         this.isReady = false;
@@ -31,24 +34,21 @@ class PyodideWorkerKernel {
         statusCallback('loading');
         
         try {
-            // --- THE FIX: Define the base URL once so they never mismatch! ---
-            const pyodideBaseURL = "https://cdn.jsdelivr.net/pyodide/v314.0.6/full/";
-            
             // 1. Load the Pyodide script only once
             if (typeof loadPyodide === 'undefined') {
                 await new Promise((resolve, reject) => {
                     const script = document.createElement('script');
-                    script.src = pyodideBaseURL + "pyodide.js";
+                    script.src = PYODIDE_CDN_URL + "pyodide.js"; // Uses global constant
                     script.onload = resolve;
                     script.onerror = () => reject(new Error("Failed to load Pyodide CDN"));
                     document.head.appendChild(script);
                 });
             }
 
-            // 2. Initialize the Pyodide WebAssembly module ONLY ONCE per page!
+            // 2. Initialize the Pyodide WebAssembly module ONLY ONCE per page
             if (!window.globalPyodideInstance) {
                 window.globalPyodideInstance = await loadPyodide({
-                    indexURL: pyodideBaseURL // This must perfectly match the script path
+                    indexURL: PYODIDE_CDN_URL // Uses the exact same global constant
                 });
                 
                 statusCallback('packages');
@@ -58,7 +58,7 @@ class PyodideWorkerKernel {
             // 3. Attach the cached instance to this specific kernel
             this.pyodide = window.globalPyodideInstance;
             
-            // 4. Dynamically re-bind the stdout/stderr to THIS specific notebook's output
+            // 4. Dynamically re-bind the stdout/stderr
             this.pyodide.setStdout({ batched: (text) => this.writeOutput(text, 'text-slate-700') });
             this.pyodide.setStderr({ batched: (text) => this.writeOutput(text, 'text-red-600') });
             

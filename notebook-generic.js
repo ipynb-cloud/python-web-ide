@@ -34,39 +34,39 @@ class PyodideWorkerKernel {
         statusCallback('loading');
         
         try {
-            // 1. Load the Pyodide script only once
-            if (typeof loadPyodide === 'undefined') {
-                await new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = PYODIDE_CDN_URL + "pyodide.js"; // Uses global constant
-                    script.onload = resolve;
-                    script.onerror = () => reject(new Error("Failed to load Pyodide CDN"));
-                    document.head.appendChild(script);
-                });
+            // 1. Kill any existing worker if we are re-initializing (tab switching)
+            if (this.worker) {
+                this.worker.terminate();
             }
 
-            // 2. Initialize the Pyodide WebAssembly module ONLY ONCE per page
-            if (!window.globalPyodideInstance) {
-                window.globalPyodideInstance = await loadPyodide({
-                    indexURL: PYODIDE_CDN_URL // Uses the exact same global constant
-                });
+            // 2. Spawn the background worker
+            this.worker = new Worker('pyodide-worker.js');
+
+            // 3. Listen for messages coming back from the worker
+            this.worker.onmessage = (e) => {
+                const data = e.data;
                 
-                statusCallback('packages');
-                await window.globalPyodideInstance.loadPackage(['micropip']);
-            }
-
-            // 3. Attach the cached instance to this specific kernel
-            this.pyodide = window.globalPyodideInstance;
-            
-            // 4. Dynamically re-bind the stdout/stderr
-            this.pyodide.setStdout({ batched: (text) => this.writeOutput(text, 'text-slate-700') });
-            this.pyodide.setStderr({ batched: (text) => this.writeOutput(text, 'text-red-600') });
-            
-            this.isReady = true;
-            statusCallback('ready');
+                // Handle status updates from the worker
+                if (data.type === 'status') {
+                    statusCallback(data.status); // 'loading', 'packages', 'ready'
+                    if (data.status === 'ready') {
+                        this.isReady = true;
+                    }
+                } 
+                // Handle stdout (print statements)
+                else if (data.type === 'stdout') {
+                    this.writeOutput(data.text, 'text-slate-700');
+                } 
+                // Handle stderr (errors)
+                else if (data.type === 'stderr') {
+                    this.writeOutput(data.error, 'text-red-600');
+                }
+                
+                // (Note: Your execute() method likely handles the 'done'/'result' messages via a Promise map)
+            };
             
         } catch (err) {
-            console.error("Pyodide Initialization Error:", err);
+            console.error("Worker Initialization Error:", err);
             statusCallback('error');
         }
     }

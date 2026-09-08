@@ -30,7 +30,9 @@ class PyodideWorkerKernel {
         this.kernelMode = options.kernelMode || 'local'; 
     }
 
-    async init(statusCallback) {
+async init(statusCallback) {
+        // Store the callback so the handleMessage method can access it
+        this.statusCallback = statusCallback;
         statusCallback('loading');
         
         try {
@@ -39,32 +41,19 @@ class PyodideWorkerKernel {
                 this.worker.terminate();
             }
 
-            // 2. Spawn the background worker
-            // --- THE FIX: Add the { type: 'module' } flag ---
+            // 2. Spawn the background worker as an ES Module
             this.worker = new Worker('pyodide-worker.js', { type: 'module' });
 
-            // 3. Listen for messages coming back from the worker
-            this.worker.onmessage = (e) => {
-                const data = e.data;
-                
-                // Handle status updates from the worker
-                if (data.type === 'status') {
-                    statusCallback(data.status); // 'loading', 'packages', 'ready'
-                    if (data.status === 'ready') {
-                        this.isReady = true;
-                    }
-                } 
-                // Handle stdout (print statements)
-                else if (data.type === 'stdout') {
-                    this.writeOutput(data.text, 'text-slate-700');
-                } 
-                // Handle stderr (errors)
-                else if (data.type === 'stderr') {
-                    this.writeOutput(data.error, 'text-red-600');
-                }
-                
-                // (Note: Your execute() method likely handles the 'done'/'result' messages via a Promise map)
-            };
+            // 3. Route all incoming worker messages to your existing robust handler
+            this.worker.onmessage = (e) => this.handleMessage(e.data);
+
+            // 4. THE MISSING PIECE: Tell the worker to start loading Pyodide!
+            this.worker.postMessage({ 
+                action: 'INIT', 
+                id: 'init', 
+                widgetId: this.widgetId, 
+                config: this.options 
+            });
             
         } catch (err) {
             console.error("Worker Initialization Error:", err);

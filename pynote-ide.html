@@ -14,7 +14,6 @@
     <link rel="stylesheet" href="https://python-web-ide.pages.dev/markdown-styles.css">
 
     <!-- 3. Third-Party Runtime Libraries -->
-    <!-- Note: Make sure to use your locally compiled cm6.bundle.min.js! -->
     <script src="https://python-web-ide.pages.dev/cm6.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -83,6 +82,12 @@
                 <hr class="border-slate-200 my-1">
                 <a href="#" id="menu-file-save-moodle" class="block px-4 py-1.5 hover:bg-fuchsia-600 hover:text-white flex justify-between text-fuchsia-700 font-medium">
                     <span>Export to Moodle XML</span>
+                </a>
+                <!-- NEW: Share URL Button -->
+                <hr class="border-slate-200 my-1">
+                <a href="#" id="menu-file-share" class="block px-4 py-1.5 hover:bg-emerald-500 hover:text-white flex justify-between text-emerald-600 font-medium">
+                    <span>Copy Shareable Link</span>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
                 </a>
             </div>
         </div>
@@ -258,9 +263,32 @@
             questionMode: false, isReadOnly: false, disableInsertAll: false, disableDelete: false
         };
 
-        // --- 2. VIEW STATE SYNCHRONIZATION ---
+        // --- 2. URL COMPRESSION ENGINE ---
         
-        // Grabs data from WHICHEVER editor is currently open and saves it to the Virtual FS.
+        async function compressForURL(text) {
+            const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+            const compressedBuffer = await new Response(stream).arrayBuffer();
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(compressedBuffer)));
+            return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        async function decompressFromURL(base64UrlSafe) {
+            try {
+                let base64 = base64UrlSafe.replace(/-/g, '+').replace(/_/g, '/');
+                while (base64.length % 4) base64 += '=';
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+                return await new Response(stream).text();
+            } catch (err) {
+                console.error("Failed to decompress URL payload", err);
+                return null;
+            }
+        }
+
+        // --- 3. VIEW STATE SYNCHRONIZATION ---
+        
         function syncCurrentState() {
             if (currentViewMode === 'visual' && window.notebookCore) {
                 virtualFS[activeFileName] = window.notebookCore.serializeToFlat();
@@ -298,18 +326,17 @@
 
         function switchFile(newFileName) {
             if (activeFileName === newFileName) return;
-            if (!syncCurrentState()) return; // Save current editor before switching tabs
+            if (!syncCurrentState()) return; 
             activeFileName = newFileName;
             renderWorkspace();
         }
 
-        // Catch internal PyNote saves
         window.triggerHostSync = function(flatfilePayload) {
             if (currentViewMode === 'visual') virtualFS[activeFileName] = flatfilePayload;
         };
 
 
-        // --- 3. RENDERING ENGINE ---
+        // --- 4. RENDERING ENGINE ---
         
         function renderWorkspace() {
             const visualWrapper = document.getElementById('visual-editor-wrapper');
@@ -320,22 +347,18 @@
                 rawWrapper.classList.add('hidden'); rawWrapper.classList.remove('flex');
                 visualWrapper.classList.remove('hidden'); visualWrapper.classList.add('flex');
                 
-                // Apply TopBar & Kernel UI
                 const header = document.getElementById('main-header');
                 if (currentOptions.showTopBar) header.classList.remove('hidden'); else header.classList.add('hidden');
                 document.getElementById('kernel-selector').value = currentOptions.kernelType;
 
-                // --- 1. MEMORY CLEANUP: Destroy the old kernel worker so they don't pile up! ---
+                // Memory & Listener Cleanup
                 if (window.notebookCore && window.notebookCore.kernel && window.notebookCore.kernel.destroy) {
                     window.notebookCore.kernel.destroy();
                 }
-
-                // --- 2. LISTENER CLEANUP: Wipe ghost event listeners by replacing the DOM node ---
                 const oldMount = document.getElementById('pynote-mount-point');
                 const newMount = oldMount.cloneNode(false);
                 oldMount.parentNode.replaceChild(newMount, oldMount);
 
-                // 3. Boot fresh environment
                 window.notebookCore = new NotebookCore('pynote-mount-point', currentOptions);
                 const parsedCells = window.notebookCore.deserializeFromFlat(virtualFS[activeFileName] || '');
                 window.notebookCore.loadData(parsedCells);
@@ -363,7 +386,7 @@
             updateTabBarUI();
         }
 
-        // --- 4. UI GENERATORS (Tabs & Files) ---
+        // --- 5. UI GENERATORS ---
 
         function updateTabBarUI() {
             const tabBar = document.getElementById('tab-bar');
@@ -391,7 +414,8 @@
             });
         }
 
-        // --- 5. EXPORT MENU BINDINGS ---
+        // --- 6. EXPORT MENU BINDINGS ---
+        
         function downloadFile(filename, content) {
             const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
@@ -402,7 +426,6 @@
             e.preventDefault(); if (syncCurrentState()) downloadFile(activeFileName.replace('.ipynb', '') + '.pynote.py', virtualFS[activeFileName]);
         };
 
-        // Main navbar download button (defaults to flatfile)
         document.getElementById('btn-export').onclick = () => {
             if (syncCurrentState()) downloadFile(activeFileName.replace('.ipynb', '') + '.pynote.py', virtualFS[activeFileName]);
         };
@@ -419,7 +442,6 @@
             downloadFile(activeFileName.replace('.pynote.py', '') + '.ipynb', JSON.stringify({ cells, metadata: { language_info: { name: "python" } }, nbformat: 4, nbformat_minor: 5 }, null, 2));
         };
 
-        // NEW MOODLE FETCH LOGIC
         document.getElementById('menu-file-save-moodle').onclick = async (e) => {
             e.preventDefault();
             if (!syncCurrentState()) return;
@@ -429,12 +451,10 @@
             btnSpan.innerText = "Fetching template...";
 
             try {
-                // 1. Fetch template from server
                 const response = await fetch('https://python-web-ide.pages.dev/moodle-template.xml');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 let templateStr = await response.text();
 
-                // 2. Prepare payload
                 let flatData = virtualFS[activeFileName];
                 flatData = flatData.replace(/]]>/g, ']]]]><![CDATA[>');
 
@@ -445,14 +465,12 @@
                     questionMode: currentOptions.questionMode
                 }, null, 8).trim();
                 
-                // 3. Inject unique IDs and data
                 const randomId = Math.random().toString(36).substring(2, 8);
                 templateStr = templateStr.replace(/{{PYNOTE_FLATFILE}}/g, flatData);
                 templateStr = templateStr.replace(/{{PYNOTE_CONFIG}}/g, configJson);
                 templateStr = templateStr.replace(/{{UNIQUE_ID}}/g, randomId);
 
                 downloadFile('pynote-moodle-export.xml', templateStr);
-                
             } catch (err) {
                 console.error("Template Fetch Error:", err);
                 alert("Failed to fetch the Moodle template. Please check your connection.");
@@ -461,7 +479,32 @@
             }
         };
 
-        // --- 6. DRAG & DROP BINDINGS ---
+        // NEW: SHARE URL BINDING
+        document.getElementById('menu-file-share').onclick = async (e) => {
+            e.preventDefault();
+            if (!syncCurrentState()) return;
+
+            const btnSpan = e.currentTarget.querySelector('span');
+            const originalText = btnSpan.innerText;
+            btnSpan.innerText = "Compressing...";
+
+            try {
+                const flatData = virtualFS[activeFileName];
+                const compressed = await compressForURL(flatData);
+                const shareUrl = window.location.origin + window.location.pathname + '?nb=' + compressed;
+                
+                await navigator.clipboard.writeText(shareUrl);
+                btnSpan.innerText = "Link Copied!";
+                setTimeout(() => btnSpan.innerText = originalText, 2000);
+            } catch (err) {
+                console.error("Compression Error:", err);
+                alert("Failed to generate share link.");
+                btnSpan.innerText = originalText;
+            }
+        };
+
+        // --- 7. DRAG & DROP BINDINGS ---
+        
         const dropZone = document.getElementById('lhs-file-panel'), dropInd = document.getElementById('drop-indicator'), fileList = document.getElementById('file-list');
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); fileList.classList.add('hidden'); dropInd.classList.remove('hidden'); dropInd.classList.add('flex'); });
         dropZone.addEventListener('dragleave', () => { fileList.classList.remove('hidden'); dropInd.classList.add('hidden'); dropInd.classList.remove('flex'); });
@@ -487,7 +530,8 @@
             reader.readAsText(file);
         }
 
-        // --- 7. RHS CONFIGURATION BINDINGS ---
+        // --- 8. RHS CONFIGURATION BINDINGS ---
+        
         ['kernel', 'topbar', 'question', 'readonly', 'noinsert', 'nodelete'].forEach(key => {
             const el = document.getElementById('config-' + key);
             el.addEventListener('change', (e) => {
@@ -497,8 +541,26 @@
             });
         });
 
-        // --- BOOTSTRAP ---
-        renderWorkspace();
+        // --- 9. BOOTSTRAP & URL ROUTING ---
+        
+        (async function bootIDE() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const compressedPayload = urlParams.get('nb');
+            
+            if (compressedPayload) {
+                const decompressedFlatfile = await decompressFromURL(compressedPayload);
+                if (decompressedFlatfile) {
+                    activeFileName = 'shared_notebook.pynote.py';
+                    virtualFS = { [activeFileName]: decompressedFlatfile };
+                    
+                    // Clean the URL bar so it isn't massive
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }
+            
+            renderWorkspace();
+        })();
+
     </script>
 </body>
 </html>

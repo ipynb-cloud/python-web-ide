@@ -141,8 +141,8 @@
             </div>
         </aside>
 
-        <!-- MAIN: EDITOR AREA -->
-        <main id="main-panel" class="bg-[#f3f4f6] flex flex-col relative overflow-hidden">
+<!-- MAIN: EDITOR AREA -->
+        <main id="main-panel" class="bg-[#f3f4f6] flex flex-col relative overflow-hidden min-h-0">
             
             <!-- Browser-Style Tab Bar -->
             <div class="bg-slate-200 flex items-end px-2 pt-2 gap-1 shrink-0 overflow-x-auto border-b border-slate-300 shadow-inner" id="tab-bar">
@@ -150,10 +150,12 @@
             </div>
             
             <!-- FIXED WORKSPACE (Card fills viewport, internal scrolling) -->
-            <div class="flex-1 relative flex justify-center w-full p-4 overflow-hidden">
+            <!-- Added min-h-0 here to force flex layout to respect boundaries -->
+            <div class="flex-1 relative flex justify-center w-full p-4 overflow-hidden min-h-0">
                 
                 <!-- VISUAL EDITOR -->
-                <div id="visual-editor-wrapper" class="w-full max-w-5xl h-full bg-white border border-slate-200 rounded-md shadow-sm flex flex-col">
+                <!-- Added min-h-0 here so the card doesn't stretch infinitely -->
+                <div id="visual-editor-wrapper" class="w-full max-w-5xl h-full bg-white border border-slate-200 rounded-md shadow-sm flex flex-col min-h-0">
                     <header id="main-header" class="hidden bg-white border-b border-slate-200 px-4 py-2 flex justify-between items-center shrink-0 rounded-t-md transition-all">
                         <div class="flex items-center gap-3">
                             <div id="kernel-status-wrapper" class="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-md tracking-wider border border-slate-200 shadow-inner">
@@ -177,17 +179,18 @@
                         </div>
                     </header>
                     <!-- PyNote mounts here and scrolls internally! -->
-                    <div id="pynote-mount-point" class="flex-1 overflow-y-auto p-4 relative flex flex-col w-full box-border"></div>
+                    <!-- Added min-h-0 here as well -->
+                    <div id="pynote-mount-point" class="flex-1 overflow-y-auto p-4 relative flex flex-col w-full box-border min-h-0"></div>
                 </div>
 
                 <!-- RAW TEXT EDITOR (Hidden by default) -->
-                <div id="raw-editor-wrapper" class="w-full max-w-5xl h-full bg-white border border-slate-200 rounded-md shadow-sm flex-col hidden">
+                <div id="raw-editor-wrapper" class="w-full max-w-5xl h-full bg-white border border-slate-200 rounded-md shadow-sm flex-col hidden min-h-0">
                     <div class="bg-slate-800 text-slate-200 px-4 py-2 text-xs font-mono rounded-t-md flex justify-between shrink-0">
                         <span id="raw-editor-title">raw mode</span>
                         <span class="text-slate-400">Edits are applied when switching views or tabs.</span>
                     </div>
                     <!-- Raw Editor scrolls internally -->
-                    <textarea id="raw-editor-textarea" spellcheck="false" class="flex-1 overflow-y-auto w-full p-4 font-mono text-sm resize-none outline-none bg-slate-50 text-slate-800 rounded-b-md focus:ring-2 focus:ring-inset focus:ring-blue-500"></textarea>
+                    <textarea id="raw-editor-textarea" spellcheck="false" class="flex-1 overflow-y-auto w-full p-4 font-mono text-sm resize-none outline-none bg-slate-50 text-slate-800 rounded-b-md focus:ring-2 focus:ring-inset focus:ring-blue-500 min-h-0"></textarea>
                 </div>
 
             </div>

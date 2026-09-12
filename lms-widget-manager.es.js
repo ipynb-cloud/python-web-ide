@@ -7,8 +7,8 @@ class b {
     c(this, "storageKey");
     c(this, "observer", null);
     c(this, "disconnectCallbacks", []);
-    var r;
-    if (!e || ((r = e.tagName) == null ? void 0 : r.toLowerCase()) !== "textarea")
+    var n;
+    if (!e || ((n = e.tagName) == null ? void 0 : n.toLowerCase()) !== "textarea")
       throw new Error("MoodleTextareaAdapter requires a valid HTMLTextAreaElement.");
     this.textarea = e, this.storageKey = this.generateStorageKey(), t.hideTextarea !== !1 && !this.textarea.hasAttribute("data-lms-widget-show-answerbox") && this.hideTextarea(), this.setupDomWatcher();
   }
@@ -70,13 +70,13 @@ class b {
    * Generates a stable unique hash identifier for this textarea based on location and identifier.
    */
   generateStorageKey() {
-    const e = typeof window < "u" && window.location ? window.location.origin : "host", t = typeof window < "u" && window.location ? window.location.pathname : "", s = this.textarea.name || this.textarea.id || "unnamed-box", r = `${e}${t}#${s}`;
-    let d = 0;
-    for (let i = 0; i < r.length; i++) {
-      const l = r.charCodeAt(i);
-      d = (d << 5) - d + l, d |= 0;
+    const e = typeof window < "u" && window.location ? window.location.origin : "host", t = typeof window < "u" && window.location ? window.location.pathname : "", s = this.textarea.name || this.textarea.id || "unnamed-box", n = `${e}${t}#${s}`;
+    let a = 0;
+    for (let i = 0; i < n.length; i++) {
+      const l = n.charCodeAt(i);
+      a = (a << 5) - a + l, a |= 0;
     }
-    return `lms_widget_backup_${Math.abs(d).toString(36)}`;
+    return `lms_widget_backup_${Math.abs(a).toString(36)}`;
   }
   /**
    * Retrieves the current content.
@@ -92,8 +92,8 @@ class b {
         if (t && t.trim().length > 0) {
           let s = t;
           try {
-            const r = JSON.parse(t);
-            r && typeof r == "object" && typeof r.content == "string" && (s = r.content);
+            const n = JSON.parse(t);
+            n && typeof n == "object" && typeof n.content == "string" && (s = n.content);
           } catch {
           }
           if (s && s.trim().length > 0)
@@ -156,22 +156,22 @@ class b {
    */
   static garbageCollect(e = 14) {
     if (typeof window > "u" || !window.localStorage) return;
-    const t = e * 24 * 60 * 60 * 1e3, s = Date.now(), r = [];
-    for (let d = 0; d < window.localStorage.length; d++) {
-      const i = window.localStorage.key(d);
+    const t = e * 24 * 60 * 60 * 1e3, s = Date.now(), n = [];
+    for (let a = 0; a < window.localStorage.length; a++) {
+      const i = window.localStorage.key(a);
       if (i && i.startsWith("lms_widget_backup_"))
         try {
           const l = window.localStorage.getItem(i);
           if (l) {
-            const n = JSON.parse(l);
-            n && typeof n == "object" && n.timestamp ? s - n.timestamp > t && r.push(i) : r.push(i);
+            const r = JSON.parse(l);
+            r && typeof r == "object" && r.timestamp ? s - r.timestamp > t && n.push(i) : n.push(i);
           }
         } catch {
-          r.push(i);
+          n.push(i);
         }
     }
-    for (const d of r)
-      window.localStorage.removeItem(d);
+    for (const a of n)
+      window.localStorage.removeItem(a);
   }
   /**
    * Cleanup lifecycle method to unbind event listeners and prevent memory leaks.
@@ -180,7 +180,7 @@ class b {
     this.observer && (this.observer.disconnect(), this.observer = null), this.disconnectCallbacks = [];
   }
 }
-const h = {
+const g = {
   REQUEST_CONTENT: "REQUEST_CONTENT",
   SYNC_CONTENT: "SYNC_CONTENT",
   SYNC_HEIGHT: "SYNC_HEIGHT",
@@ -189,7 +189,7 @@ const h = {
   SYNC_ACK: "SYNC_ACK",
   ERROR_LOCKDOWN: "ERROR_LOCKDOWN"
 };
-class T {
+class S {
   constructor(e, t = "*") {
     c(this, "iframe");
     c(this, "targetOrigin");
@@ -214,10 +214,10 @@ class T {
         }
       if (!t || typeof t != "object")
         return;
-      const { type: s, payload: r, msgId: d } = t;
+      const { type: s, payload: n, msgId: a } = t;
       typeof s == "string" && this.handlers.forEach((i) => {
         try {
-          i(s, r, d);
+          i(s, n, a);
         } catch (l) {
           console.error("[IframeMessengerAdapter] Error in message handler:", l);
         }
@@ -242,7 +242,7 @@ class T {
    */
   sendLoadContent(e, t) {
     this.post({
-      type: h.LOAD_CONTENT,
+      type: g.LOAD_CONTENT,
       payload: {
         content: e,
         config: t
@@ -254,7 +254,7 @@ class T {
    */
   sendInsertContent(e) {
     this.post({
-      type: h.INSERT_CONTENT,
+      type: g.INSERT_CONTENT,
       payload: {
         content: e
       }
@@ -265,7 +265,7 @@ class T {
    */
   sendSyncAck(e, t) {
     this.post({
-      type: h.SYNC_ACK,
+      type: g.SYNC_ACK,
       msgId: e,
       payload: {
         serverHash: t,
@@ -286,7 +286,7 @@ class T {
     if (!this.isLockedDown) {
       try {
         this.post({
-          type: h.ERROR_LOCKDOWN,
+          type: g.ERROR_LOCKDOWN,
           payload: { message: "Connection severed due to fatal sync error." }
         });
       } catch {
@@ -301,7 +301,7 @@ class T {
     this.handlers.clear(), this.messageListener && (window.removeEventListener("message", this.messageListener), this.messageListener = null);
   }
 }
-class S {
+class T {
   constructor(e) {
     c(this, "element");
     c(this, "handlers", /* @__PURE__ */ new Set());
@@ -312,31 +312,31 @@ class S {
     this.element = e, this.setupListeners();
   }
   setupListeners() {
-    const e = (s, r) => {
-      const d = (i) => {
+    const e = (s, n) => {
+      const a = (i) => {
         if (this.isLockedDown) return;
-        const n = i.detail || {}, a = n.payload !== void 0 ? n.payload : n, f = n.msgId || n.payload && n.payload.msgId;
-        this.handlers.forEach((u) => {
+        const r = i.detail || {}, d = r.payload !== void 0 ? r.payload : r, f = r.msgId || r.payload && r.payload.msgId;
+        this.handlers.forEach((h) => {
           try {
-            u(r, a, f);
-          } catch (g) {
-            console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, g);
+            h(n, d, f);
+          } catch (u) {
+            console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, u);
           }
         });
       };
-      this.element.addEventListener(s, d), this.cleanupFns.push(() => this.element.removeEventListener(s, d));
+      this.element.addEventListener(s, a), this.cleanupFns.push(() => this.element.removeEventListener(s, a));
     };
-    e("widget:request-content", h.REQUEST_CONTENT), e("lms-widget:request-content", h.REQUEST_CONTENT), e("widget:sync-content", h.SYNC_CONTENT), e("lms-widget:sync-content", h.SYNC_CONTENT), e("widget:sync-height", h.SYNC_HEIGHT), e("lms-widget:sync-height", h.SYNC_HEIGHT);
+    e("widget:request-content", g.REQUEST_CONTENT), e("lms-widget:request-content", g.REQUEST_CONTENT), e("widget:sync-content", g.SYNC_CONTENT), e("lms-widget:sync-content", g.SYNC_CONTENT), e("widget:sync-height", g.SYNC_HEIGHT), e("lms-widget:sync-height", g.SYNC_HEIGHT);
     const t = (s) => {
       if (this.isLockedDown) return;
-      const r = s;
-      if (r.detail && r.detail.type) {
-        const { type: d, payload: i, msgId: l } = r.detail;
-        this.handlers.forEach((n) => {
+      const n = s;
+      if (n.detail && n.detail.type) {
+        const { type: a, payload: i, msgId: l } = n.detail;
+        this.handlers.forEach((r) => {
           try {
-            n(d, i, l);
-          } catch (a) {
-            console.error("[DOMEventMessengerAdapter] Error handling generic message:", a);
+            r(a, i, l);
+          } catch (d) {
+            console.error("[DOMEventMessengerAdapter] Error handling generic message:", d);
           }
         });
       }
@@ -367,21 +367,29 @@ class S {
     );
   }
   sendInsertContent(e) {
+    var a, i;
     if (this.isLockedDown) return;
-    const t = { content: e, payload: e };
-    this.element.dispatchEvent(
-      new CustomEvent("host:insert-content", {
-        detail: t,
-        bubbles: !0,
-        composed: !0
-      })
-    ), this.element.dispatchEvent(
-      new CustomEvent("widget:insert-content", {
-        detail: t,
-        bubbles: !0,
-        composed: !0
-      })
-    );
+    const t = { content: e, payload: e }, s = new CustomEvent("host:insert-content", {
+      detail: t,
+      bubbles: !0,
+      composed: !0,
+      cancelable: !0
+    });
+    this.element.dispatchEvent(s);
+    const n = new CustomEvent("widget:insert-content", {
+      detail: t,
+      bubbles: !0,
+      composed: !0,
+      cancelable: !0
+    });
+    if (this.element.dispatchEvent(n), !s.defaultPrevented && !n.defaultPrevented) {
+      const l = (a = this.element.tagName) == null ? void 0 : a.toLowerCase();
+      let r = null;
+      if (l === "textarea" || l === "input" ? r = this.element : r = this.element.querySelector("textarea, input"), r && !r.disabled && !r.readOnly) {
+        const d = r.selectionStart ?? r.value.length, f = r.selectionEnd ?? r.value.length, h = r.value;
+        r.value = h.substring(0, d) + e + h.substring(f), r.selectionStart = r.selectionEnd = d + e.length, (i = r.focus) == null || i.call(r), r.dispatchEvent(new Event("input", { bubbles: !0 }));
+      }
+    }
   }
   /**
    * Confirms a successful save back to the web component.
@@ -447,41 +455,41 @@ class S {
     this.cleanupFns = [];
   }
 }
-function E(o, e) {
-  var g;
-  const t = (o == null ? void 0 : o.getAttribute("data-run-mode")) || ((g = document.body) == null ? void 0 : g.getAttribute("data-run-mode"));
+function x(o, e) {
+  var u;
+  const t = (o == null ? void 0 : o.getAttribute("data-run-mode")) || ((u = document.body) == null ? void 0 : u.getAttribute("data-run-mode"));
   if (t === "edit" || t === "attempt" || t === "grade" || t === "review")
     return t;
-  const s = typeof window < "u" && window.location ? window.location.href : "", r = typeof window < "u" && window.location ? window.location.pathname : "", d = typeof window < "u" && window.location ? window.location.search : "";
-  if (r.includes("/question/question.php") || r.includes("/question/bank/editquestion/") || s.includes("/question/question.php") || s.includes("/question/bank/editquestion/"))
+  const s = typeof window < "u" && window.location ? window.location.href : "", n = typeof window < "u" && window.location ? window.location.pathname : "", a = typeof window < "u" && window.location ? window.location.search : "";
+  if (n.includes("/question/question.php") || n.includes("/question/bank/editquestion/") || s.includes("/question/question.php") || s.includes("/question/bank/editquestion/"))
     return "edit";
-  const i = (r.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && d.includes("mode=grading"), l = (o == null ? void 0 : o.closest(".que, .form-item, form, body")) || document.body, n = l == null ? void 0 : l.querySelector(
+  const i = (n.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && a.includes("mode=grading"), l = (o == null ? void 0 : o.closest(".que, .form-item, form, body")) || document.body, r = l == null ? void 0 : l.querySelector(
     ".comment-area, .gradingform, .qtype_essay_response_form, .commenttext"
-  ), a = !!(n && n.style.display !== "none" && !n.hidden && (typeof window > "u" || !window.getComputedStyle || window.getComputedStyle(n).display !== "none"));
-  if (i || a)
+  ), d = !!(r && r.style.display !== "none" && !r.hidden && (typeof window > "u" || !window.getComputedStyle || window.getComputedStyle(r).display !== "none"));
+  if (i || d)
     return "grade";
-  const f = r.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), u = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (o == null ? void 0 : o.getAttribute("data-readonly")) === "true";
-  return f || u && !i && !a ? "review" : "attempt";
+  const f = n.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), h = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (o == null ? void 0 : o.getAttribute("data-readonly")) === "true";
+  return f || h && !i && !d ? "review" : "attempt";
 }
 class A {
-  constructor(e, t, s, r = {}) {
+  constructor(e, t, s, n = {}) {
     c(this, "mountPoint");
     c(this, "storage");
     c(this, "messenger");
     c(this, "config");
     c(this, "isErrorState", !1);
     c(this, "widgetTarget", null);
-    var l, n;
+    var l, r;
     if (!e || e.nodeType !== 1)
       throw new Error("WidgetController requires a valid mount point HTMLElement.");
     this.mountPoint = e, this.storage = t, this.messenger = s, this.widgetTarget = this.mountPoint.querySelector("[data-lms-widget]") || this.mountPoint.querySelector("iframe, [data-widget-embedded]") || this.mountPoint.firstElementChild || this.mountPoint;
-    const d = r.runMode || ((l = r.config) == null ? void 0 : l.runMode) || E(this.mountPoint), i = ((n = r.config) == null ? void 0 : n.isReadOnly) !== void 0 ? r.config.isReadOnly : this.storage.isReadOnly() || d === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
+    const a = n.runMode || ((l = n.config) == null ? void 0 : l.runMode) || x(this.mountPoint), i = ((r = n.config) == null ? void 0 : r.isReadOnly) !== void 0 ? n.config.isReadOnly : this.storage.isReadOnly() || a === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
     this.config = {
       isReadOnly: i,
-      runMode: d,
+      runMode: a,
       defaultCellType: this.mountPoint.getAttribute("data-default-cell-type") || void 0,
       disableInsertAll: this.mountPoint.getAttribute("data-disable-insert-all") === "true",
-      ...r.config
+      ...n.config
     }, this.init();
   }
   /**
@@ -533,16 +541,16 @@ class A {
     this.messenger.onMessage((e, t, s) => {
       if (!this.isErrorState)
         switch (e) {
-          case h.REQUEST_CONTENT: {
-            const r = this.storage.load();
-            this.messenger.sendLoadContent(r, this.config);
+          case g.REQUEST_CONTENT: {
+            const n = this.storage.load();
+            this.messenger.sendLoadContent(n, this.config);
             break;
           }
-          case h.SYNC_CONTENT: {
+          case g.SYNC_CONTENT: {
             this.handleSyncContent(t, s);
             break;
           }
-          case h.SYNC_HEIGHT: {
+          case g.SYNC_HEIGHT: {
             this.handleSyncHeight(t);
             break;
           }
@@ -553,10 +561,10 @@ class A {
    * Handles incoming SYNC_CONTENT messages from the widget.
    */
   handleSyncContent(e, t) {
-    let s = "", r = t || "";
-    if (typeof e == "string" ? s = e : e && typeof e == "object" && (s = typeof e.content == "string" ? e.content : JSON.stringify(e.content ?? e), !r && e.msgId && (r = e.msgId)), this.storage.save(s)) {
+    let s = "", n = t || "";
+    if (typeof e == "string" ? s = e : e && typeof e == "object" && (s = typeof e.content == "string" ? e.content : JSON.stringify(e.content ?? e), !n && e.msgId && (n = e.msgId)), this.storage.save(s)) {
       const i = this.computeHash(s);
-      this.messenger.sendSyncAck(r, i);
+      this.messenger.sendSyncAck(n, i);
     } else {
       console.error("[WidgetController] Storage save returned false. Triggering Fatal Error State.");
       const i = !this.storage.isAttached || this.storage.isAttached() ? "Host rejected the write or storage verification failed." : "Target LMS answerbox was removed or disconnected from the DOM.";
@@ -639,8 +647,8 @@ class A {
         Reload Page
       </button>
     `;
-    const r = s.querySelector(".widget-reload-btn");
-    r && r.addEventListener("click", () => {
+    const n = s.querySelector(".widget-reload-btn");
+    n && n.addEventListener("click", () => {
       window.location.reload();
     }), this.mountPoint.appendChild(s);
   }
@@ -656,21 +664,21 @@ class A {
 }
 const m = [];
 function L(o) {
-  var i, l, n;
+  var i, l, r;
   const e = o.getAttribute("data-lms-target-textarea") || o.getAttribute("data-target-textarea") || o.getAttribute("data-target") || o.getAttribute("data-lms-textarea-selector") || o.getAttribute("data-textarea-selector");
   if (e) {
-    const a = document.querySelector(e);
-    if (a && ((i = a.tagName) == null ? void 0 : i.toLowerCase()) === "textarea")
-      return a;
+    const d = document.querySelector(e);
+    if (d && ((i = d.tagName) == null ? void 0 : i.toLowerCase()) === "textarea")
+      return d;
   }
   const t = o.getAttribute("data-lms-textarea-name") || o.getAttribute("data-textarea-name");
   if (t) {
-    const a = document.querySelector(`textarea[name="${t}"]`);
-    if (a && ((l = a.tagName) == null ? void 0 : l.toLowerCase()) === "textarea")
-      return a;
+    const d = document.querySelector(`textarea[name="${t}"]`);
+    if (d && ((l = d.tagName) == null ? void 0 : l.toLowerCase()) === "textarea")
+      return d;
   }
-  const s = o.closest(".que, .form-item, .fitem, .felement, form, body") || document.body, d = Array.from(s.querySelectorAll("textarea")).find((a) => !o.contains(a));
-  return d && ((n = d.tagName) == null ? void 0 : n.toLowerCase()) === "textarea" ? d : null;
+  const s = o.closest(".que, .form-item, .fitem, .felement, form, body") || document.body, a = Array.from(s.querySelectorAll("textarea")).find((d) => !o.contains(d));
+  return a && ((r = a.tagName) == null ? void 0 : r.toLowerCase()) === "textarea" ? a : null;
 }
 function y(o, e) {
   o.innerHTML = "", o.style.position = "relative";
@@ -693,7 +701,7 @@ function y(o, e) {
     <p style="margin: 0;">${e}</p>
   `, o.appendChild(t);
 }
-function x() {
+function E() {
   b.garbageCollect(14);
   const o = document.querySelectorAll(
     ".lms-widget-container:not([data-lms-widget-initialized]):not([data-widget-initialized]), .widget-mount-point:not([data-lms-widget-initialized]):not([data-widget-initialized])"
@@ -718,96 +726,58 @@ function x() {
       return;
     }
     s.setAttribute("data-lms-widget-bound", "true"), s.setAttribute("data-widget-bound", "true"), t.setAttribute("data-lms-widget-initialized", "true"), t.setAttribute("data-widget-initialized", "true");
-    const r = t.querySelector("[data-lms-widget]"), d = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (r == null ? void 0 : r.hasAttribute("data-lms-widget-show-answerbox")), i = new b(s, {
-      hideTextarea: !d
+    const n = t.querySelector("[data-lms-widget]"), a = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (n == null ? void 0 : n.hasAttribute("data-lms-widget-show-answerbox")), i = new b(s, {
+      hideTextarea: !a
     }), l = () => {
       var f;
-      let n = null;
-      const a = t.querySelector("[data-lms-widget]");
-      if (a)
-        if (a.hasAttribute("data-lms-widget-show-answerbox") && ((f = i.showTextarea) == null || f.call(i)), a.tagName.toLowerCase() === "iframe") {
-          let u = "*";
-          const g = a.getAttribute("data-lms-widget-origin") || t.getAttribute("data-lms-widget-origin");
-          if (g)
-            u = g;
-          else if (a.hasAttribute("src"))
+      let r = null;
+      const d = t.querySelector("[data-lms-widget]");
+      if (d)
+        if (d.hasAttribute("data-lms-widget-show-answerbox") && ((f = i.showTextarea) == null || f.call(i)), d.tagName.toLowerCase() === "iframe") {
+          let h = "*";
+          const u = d.getAttribute("data-lms-widget-origin") || t.getAttribute("data-lms-widget-origin");
+          if (u)
+            h = u;
+          else if (d.hasAttribute("src"))
             try {
-              u = new URL(a.getAttribute("src") || "", window.location.href).origin;
+              h = new URL(d.getAttribute("src") || "", window.location.href).origin;
             } catch {
             }
-          n = new T(a, u);
+          r = new S(d, h);
         } else
-          n = new S(a);
-      if (n) {
-        const u = E(t, s), g = new A(t, i, n, { runMode: u }), p = g.destroy.bind(g);
-        return g.destroy = () => {
+          r = new T(d);
+      if (r) {
+        const h = x(t, s), u = new A(t, i, r, { runMode: h }), p = u.destroy.bind(u);
+        return u.destroy = () => {
           p();
-          const w = m.indexOf(g);
+          const w = m.indexOf(u);
           w > -1 && m.splice(w, 1);
-        }, e.push(g), m.push(g), !0;
+        }, e.push(u), m.push(u), !0;
       }
       return !1;
     };
     if (!l()) {
-      let n = t.querySelector(
+      let r = t.querySelector(
         ".lms-widget-placeholder, .widget-placeholder, [data-lms-widget-placeholder]"
       );
-      n ? n.innerHTML = "Loading answer box..." : (n = document.createElement("div"), n.className = "lms-widget-placeholder widget-placeholder", n.innerHTML = "Loading answer box...", n.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(n)), new MutationObserver((f, u) => {
-        l() && (u.disconnect(), n && n.parentNode && n.parentNode.removeChild(n));
+      r ? r.innerHTML = "Loading answer box..." : (r = document.createElement("div"), r.className = "lms-widget-placeholder widget-placeholder", r.innerHTML = "Loading answer box...", r.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(r)), new MutationObserver((f, h) => {
+        l() && (h.disconnect(), r && r.parentNode && r.parentNode.removeChild(r));
       }).observe(t, { childList: !0, subtree: !0 });
     }
-  }), M(), e;
-}
-function M() {
-  document.querySelectorAll("[data-lms-template-code], [data-lms-template-content]").forEach((e) => {
-    if (e.hasAttribute("data-lms-template-bound")) return;
-    e.setAttribute("data-lms-template-bound", "true");
-    const t = e.getAttribute("data-lms-template-code") || e.getAttribute("data-lms-template-content"), s = e.getAttribute("data-lms-template-label") || "✨ Use this code", r = document.createElement("button");
-    r.type = "button", r.className = "lms-widget-template-btn", r.innerHTML = s, r.style.cssText = "display: inline-block; margin-top: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 4px; transition: background 0.2s;", r.addEventListener("mouseenter", () => r.style.background = "#c7d2fe"), r.addEventListener("mouseleave", () => r.style.background = "#e0e7ff"), r.addEventListener("click", (d) => {
-      var l;
-      d.preventDefault();
-      let i;
-      if (t && t !== "true" && t !== "")
-        try {
-          const n = document.querySelector(t);
-          n && (i = m.find(
-            (a) => a.getMountPoint() === n || a.getMountPoint().contains(n) || a.getMountPoint().getAttribute("data-target-textarea") === t || a.getMountPoint().getAttribute("data-lms-target-textarea") === t
-          ), !i && ((l = n.tagName) == null ? void 0 : l.toLowerCase()) === "textarea" && (i = m.find((a) => {
-            const f = a.getMountPoint(), u = f.getAttribute("data-target-textarea") || f.getAttribute("data-lms-target-textarea");
-            return u && document.querySelector(u) === n;
-          })));
-        } catch {
-        }
-      if (!i) {
-        const n = e.closest(".que, .form-item, .fitem, .felement, form") || e.closest("main, body");
-        n && (i = m.find((a) => n.contains(a.getMountPoint())));
-      }
-      if (!i && m.length > 0 && (i = m[0]), i) {
-        let n = e.innerText !== void 0 ? e.innerText : e.textContent || "";
-        if (e.getAttribute("data-lms-template-newline") !== "false" && !n.endsWith(`
-`) && (n += `
-`), i.insertContent(n)) {
-          const u = r.innerHTML;
-          r.innerHTML = "✅ Inserted!", setTimeout(() => r.innerHTML = u, 1500);
-        }
-      } else
-        console.error("[LMSWidgetManager] Could not find a target widget controller for template injection.");
-    }), e.parentNode && e.parentNode.insertBefore(r, e.nextSibling);
-  });
+  }), e;
 }
 typeof window < "u" && typeof document < "u" && (document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => {
-  x();
-}) : x());
+  E();
+}) : E());
 export {
-  S as DOMEventMessengerAdapter,
-  T as IframeMessengerAdapter,
+  T as DOMEventMessengerAdapter,
+  S as IframeMessengerAdapter,
   b as MoodleTextareaAdapter,
-  S as WebComponentMessengerAdapter,
+  T as WebComponentMessengerAdapter,
   A as WidgetController,
-  h as WidgetMessageTypes,
+  g as WidgetMessageTypes,
   m as activeControllers,
-  M as bindTemplateInjectors,
-  x as bootstrap,
-  E as sniffMoodleContext
+  E as bootstrap,
+  x as sniffMoodleContext
 };
 //# sourceMappingURL=lms-widget-manager.es.js.map

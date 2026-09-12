@@ -1,10 +1,10 @@
 var b = Object.defineProperty;
-var y = (n, e, t) => e in n ? b(n, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : n[e] = t;
-var l = (n, e, t) => y(n, typeof e != "symbol" ? e + "" : e, t);
+var y = (r, e, t) => e in r ? b(r, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : r[e] = t;
+var c = (r, e, t) => y(r, typeof e != "symbol" ? e + "" : e, t);
 class E {
   constructor(e, t = {}) {
-    l(this, "textarea");
-    l(this, "storageKey");
+    c(this, "textarea");
+    c(this, "storageKey");
     if (!e || !(e instanceof HTMLTextAreaElement))
       throw new Error("MoodleTextareaAdapter requires a valid HTMLTextAreaElement.");
     this.textarea = e, this.storageKey = this.generateStorageKey(), t.hideTextarea !== !1 && !this.textarea.hasAttribute("data-lms-widget-show-answerbox") && this.hideTextarea();
@@ -26,12 +26,12 @@ class E {
    */
   generateStorageKey() {
     const e = typeof window < "u" && window.location ? window.location.origin : "host", t = typeof window < "u" && window.location ? window.location.pathname : "", s = this.textarea.name || this.textarea.id || "unnamed-box", i = `${e}${t}#${s}`;
-    let a = 0;
-    for (let o = 0; o < i.length; o++) {
-      const d = i.charCodeAt(o);
-      a = (a << 5) - a + d, a |= 0;
+    let o = 0;
+    for (let a = 0; a < i.length; a++) {
+      const l = i.charCodeAt(a);
+      o = (o << 5) - o + l, o |= 0;
     }
-    return `lms_widget_backup_${Math.abs(a).toString(36)}`;
+    return `lms_widget_backup_${Math.abs(o).toString(36)}`;
   }
   /**
    * Retrieves the current content.
@@ -103,11 +103,11 @@ const g = {
 };
 class x {
   constructor(e, t = "*") {
-    l(this, "iframe");
-    l(this, "targetOrigin");
-    l(this, "handlers", /* @__PURE__ */ new Set());
-    l(this, "isLockedDown", !1);
-    l(this, "messageListener", null);
+    c(this, "iframe");
+    c(this, "targetOrigin");
+    c(this, "handlers", /* @__PURE__ */ new Set());
+    c(this, "isLockedDown", !1);
+    c(this, "messageListener", null);
     if (!e || !(e instanceof HTMLIFrameElement))
       throw new Error("IframeMessengerAdapter requires a valid HTMLIFrameElement.");
     this.iframe = e, this.targetOrigin = t, this.setupListener();
@@ -125,12 +125,12 @@ class x {
         }
       if (!t || typeof t != "object")
         return;
-      const { type: s, payload: i, msgId: a } = t;
-      typeof s == "string" && this.handlers.forEach((o) => {
+      const { type: s, payload: i, msgId: o } = t;
+      typeof s == "string" && this.handlers.forEach((a) => {
         try {
-          o(s, i, a);
-        } catch (d) {
-          console.error("[IframeMessengerAdapter] Error in message handler:", d);
+          a(s, i, o);
+        } catch (l) {
+          console.error("[IframeMessengerAdapter] Error in message handler:", l);
         }
       });
     }, window.addEventListener("message", this.messageListener);
@@ -197,40 +197,40 @@ class x {
 }
 class v {
   constructor(e) {
-    l(this, "element");
-    l(this, "handlers", /* @__PURE__ */ new Set());
-    l(this, "isLockedDown", !1);
-    l(this, "cleanupFns", []);
+    c(this, "element");
+    c(this, "handlers", /* @__PURE__ */ new Set());
+    c(this, "isLockedDown", !1);
+    c(this, "cleanupFns", []);
     if (!e || !(e instanceof HTMLElement))
       throw new Error("DOMEventMessengerAdapter requires a valid HTMLElement.");
     this.element = e, this.setupListeners();
   }
   setupListeners() {
     const e = (s, i) => {
-      const a = (o) => {
+      const o = (a) => {
         if (this.isLockedDown) return;
-        const r = o.detail || {}, c = r.payload !== void 0 ? r.payload : r, u = r.msgId || r.payload && r.payload.msgId;
+        const n = a.detail || {}, d = n.payload !== void 0 ? n.payload : n, u = n.msgId || n.payload && n.payload.msgId;
         this.handlers.forEach((h) => {
           try {
-            h(i, c, u);
+            h(i, d, u);
           } catch (f) {
             console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, f);
           }
         });
       };
-      this.element.addEventListener(s, a), this.cleanupFns.push(() => this.element.removeEventListener(s, a));
+      this.element.addEventListener(s, o), this.cleanupFns.push(() => this.element.removeEventListener(s, o));
     };
     e("widget:request-content", g.REQUEST_CONTENT), e("lms-widget:request-content", g.REQUEST_CONTENT), e("widget:sync-content", g.SYNC_CONTENT), e("lms-widget:sync-content", g.SYNC_CONTENT), e("widget:sync-height", g.SYNC_HEIGHT), e("lms-widget:sync-height", g.SYNC_HEIGHT);
     const t = (s) => {
       if (this.isLockedDown) return;
       const i = s;
       if (i.detail && i.detail.type) {
-        const { type: a, payload: o, msgId: d } = i.detail;
-        this.handlers.forEach((r) => {
+        const { type: o, payload: a, msgId: l } = i.detail;
+        this.handlers.forEach((n) => {
           try {
-            r(a, o, d);
-          } catch (c) {
-            console.error("[DOMEventMessengerAdapter] Error handling generic message:", c);
+            n(o, a, l);
+          } catch (d) {
+            console.error("[DOMEventMessengerAdapter] Error handling generic message:", d);
           }
         });
       }
@@ -315,38 +315,38 @@ class v {
     }
   }
 }
-function w(n, e) {
+function w(r, e) {
   var h;
-  const t = (n == null ? void 0 : n.getAttribute("data-run-mode")) || ((h = document.body) == null ? void 0 : h.getAttribute("data-run-mode"));
+  const t = (r == null ? void 0 : r.getAttribute("data-run-mode")) || ((h = document.body) == null ? void 0 : h.getAttribute("data-run-mode"));
   if (t === "edit" || t === "attempt" || t === "grade" || t === "review")
     return t;
-  const s = typeof window < "u" && window.location ? window.location.href : "", i = typeof window < "u" && window.location ? window.location.pathname : "", a = typeof window < "u" && window.location ? window.location.search : "";
+  const s = typeof window < "u" && window.location ? window.location.href : "", i = typeof window < "u" && window.location ? window.location.pathname : "", o = typeof window < "u" && window.location ? window.location.search : "";
   if (i.includes("/question/question.php") || i.includes("/question/bank/editquestion/") || s.includes("/question/question.php") || s.includes("/question/bank/editquestion/"))
     return "edit";
-  const o = (i.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && a.includes("mode=grading"), d = (n == null ? void 0 : n.closest(".que, .form-item, form, body")) || document.body, r = !!(d != null && d.querySelector(
+  const a = (i.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && o.includes("mode=grading"), l = (r == null ? void 0 : r.closest(".que, .form-item, form, body")) || document.body, n = !!(l != null && l.querySelector(
     ".comment-area, .gradingform, .qtype_essay_response_form, .commenttext"
   ));
-  if (o || r)
+  if (a || n)
     return "grade";
-  const c = i.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), u = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (n == null ? void 0 : n.getAttribute("data-readonly")) === "true";
-  return c || u && !o && !r ? "review" : "attempt";
+  const d = i.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), u = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (r == null ? void 0 : r.getAttribute("data-readonly")) === "true";
+  return d || u && !a && !n ? "review" : "attempt";
 }
 class T {
   constructor(e, t, s, i = {}) {
-    l(this, "mountPoint");
-    l(this, "storage");
-    l(this, "messenger");
-    l(this, "config");
-    l(this, "isErrorState", !1);
-    l(this, "widgetTarget", null);
-    var d, r;
+    c(this, "mountPoint");
+    c(this, "storage");
+    c(this, "messenger");
+    c(this, "config");
+    c(this, "isErrorState", !1);
+    c(this, "widgetTarget", null);
+    var l, n;
     if (!e || !(e instanceof HTMLElement))
       throw new Error("WidgetController requires a valid mount point HTMLElement.");
     this.mountPoint = e, this.storage = t, this.messenger = s, this.widgetTarget = this.mountPoint.querySelector("[data-lms-widget]") || this.mountPoint.querySelector("iframe, [data-widget-embedded]") || this.mountPoint.firstElementChild || this.mountPoint;
-    const a = i.runMode || ((d = i.config) == null ? void 0 : d.runMode) || w(this.mountPoint), o = ((r = i.config) == null ? void 0 : r.isReadOnly) !== void 0 ? i.config.isReadOnly : this.storage.isReadOnly() || a === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
+    const o = i.runMode || ((l = i.config) == null ? void 0 : l.runMode) || w(this.mountPoint), a = ((n = i.config) == null ? void 0 : n.isReadOnly) !== void 0 ? i.config.isReadOnly : this.storage.isReadOnly() || o === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
     this.config = {
-      isReadOnly: o,
-      runMode: a,
+      isReadOnly: a,
+      runMode: o,
       defaultCellType: this.mountPoint.getAttribute("data-default-cell-type") || void 0,
       disableInsertAll: this.mountPoint.getAttribute("data-disable-insert-all") === "true",
       ...i.config
@@ -403,8 +403,8 @@ class T {
   handleSyncContent(e, t) {
     let s = "", i = t || "";
     if (typeof e == "string" ? s = e : e && typeof e == "object" && (s = typeof e.content == "string" ? e.content : JSON.stringify(e.content ?? e), !i && e.msgId && (i = e.msgId)), this.storage.save(s)) {
-      const o = this.computeHash(s);
-      this.messenger.sendSyncAck(i, o);
+      const a = this.computeHash(s);
+      this.messenger.sendSyncAck(i, a);
     } else
       console.error("[WidgetController] Storage save returned false. Triggering Fatal Error State."), this.triggerErrorState("Host rejected the write or storage verification failed.");
   }
@@ -493,25 +493,25 @@ class T {
   }
 }
 const C = [];
-function L(n) {
-  var a, o, d;
-  const e = n.getAttribute("data-lms-target-textarea") || n.getAttribute("data-target-textarea") || n.getAttribute("data-target") || n.getAttribute("data-lms-textarea-selector") || n.getAttribute("data-textarea-selector");
+function L(r) {
+  var a, l, n;
+  const e = r.getAttribute("data-lms-target-textarea") || r.getAttribute("data-target-textarea") || r.getAttribute("data-target") || r.getAttribute("data-lms-textarea-selector") || r.getAttribute("data-textarea-selector");
   if (e) {
-    const r = document.querySelector(e);
-    if (r && ((a = r.tagName) == null ? void 0 : a.toLowerCase()) === "textarea")
-      return r;
+    const d = document.querySelector(e);
+    if (d && ((a = d.tagName) == null ? void 0 : a.toLowerCase()) === "textarea")
+      return d;
   }
-  const t = n.getAttribute("data-lms-textarea-name") || n.getAttribute("data-textarea-name");
+  const t = r.getAttribute("data-lms-textarea-name") || r.getAttribute("data-textarea-name");
   if (t) {
-    const r = document.querySelector(`textarea[name="${t}"]`);
-    if (r && ((o = r.tagName) == null ? void 0 : o.toLowerCase()) === "textarea")
-      return r;
+    const d = document.querySelector(`textarea[name="${t}"]`);
+    if (d && ((l = d.tagName) == null ? void 0 : l.toLowerCase()) === "textarea")
+      return d;
   }
-  const i = (n.closest(".que, .form-item, .fitem, .felement, form, body") || document.body).querySelector("textarea");
-  return i && ((d = i.tagName) == null ? void 0 : d.toLowerCase()) === "textarea" ? i : null;
+  const s = r.closest(".que, .form-item, .fitem, .felement, form, body") || document.body, o = Array.from(s.querySelectorAll("textarea")).find((d) => !r.contains(d));
+  return o && ((n = o.tagName) == null ? void 0 : n.toLowerCase()) === "textarea" ? o : null;
 }
-function m(n, e) {
-  n.innerHTML = "", n.style.position = "relative";
+function m(r, e) {
+  r.innerHTML = "", r.style.position = "relative";
   const t = document.createElement("div");
   t.className = "lms-widget-collision-banner widget-collision-error-banner", t.setAttribute("role", "alert"), t.style.cssText = `
     background-color: #b71c1c;
@@ -529,13 +529,13 @@ function m(n, e) {
       <strong style="font-size: 16px;">LMS Widget Fail-Fast Collision Error</strong>
     </div>
     <p style="margin: 0;">${e}</p>
-  `, n.appendChild(t);
+  `, r.appendChild(t);
 }
 function p() {
-  const n = document.querySelectorAll(
+  const r = document.querySelectorAll(
     ".lms-widget-container:not([data-lms-widget-initialized]):not([data-widget-initialized]), .widget-mount-point:not([data-lms-widget-initialized]):not([data-widget-initialized])"
   ), e = [];
-  return n.forEach((t) => {
+  return r.forEach((t) => {
     const s = L(t);
     if (!s) {
       console.error(
@@ -555,24 +555,24 @@ function p() {
       return;
     }
     s.setAttribute("data-lms-widget-bound", "true"), s.setAttribute("data-widget-bound", "true"), t.setAttribute("data-lms-widget-initialized", "true"), t.setAttribute("data-widget-initialized", "true");
-    const i = t.querySelector("[data-lms-widget]"), a = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (i == null ? void 0 : i.hasAttribute("data-lms-widget-show-answerbox")), o = new E(s, {
-      hideTextarea: !a
-    }), d = () => {
+    const i = t.querySelector("[data-lms-widget]"), o = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (i == null ? void 0 : i.hasAttribute("data-lms-widget-show-answerbox")), a = new E(s, {
+      hideTextarea: !o
+    }), l = () => {
       var u;
-      let r = null;
-      const c = t.querySelector("[data-lms-widget]");
-      if (c && (c.hasAttribute("data-lms-widget-show-answerbox") && ((u = o.showTextarea) == null || u.call(o)), c.tagName.toLowerCase() === "iframe" ? r = new x(c) : r = new v(c)), r) {
-        const h = w(t, s), f = new T(t, o, r, { runMode: h });
+      let n = null;
+      const d = t.querySelector("[data-lms-widget]");
+      if (d && (d.hasAttribute("data-lms-widget-show-answerbox") && ((u = a.showTextarea) == null || u.call(a)), d.tagName.toLowerCase() === "iframe" ? n = new x(d) : n = new v(d)), n) {
+        const h = w(t, s), f = new T(t, a, n, { runMode: h });
         return e.push(f), C.push(f), !0;
       }
       return !1;
     };
-    if (!d()) {
-      let r = t.querySelector(
+    if (!l()) {
+      let n = t.querySelector(
         ".lms-widget-placeholder, .widget-placeholder, [data-lms-widget-placeholder]"
       );
-      r ? r.innerHTML = "Loading answer box..." : (r = document.createElement("div"), r.className = "lms-widget-placeholder widget-placeholder", r.innerHTML = "Loading answer box...", r.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(r)), new MutationObserver((u, h) => {
-        d() && (h.disconnect(), r && r.parentNode && r.parentNode.removeChild(r));
+      n ? n.innerHTML = "Loading answer box..." : (n = document.createElement("div"), n.className = "lms-widget-placeholder widget-placeholder", n.innerHTML = "Loading answer box...", n.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(n)), new MutationObserver((u, h) => {
+        l() && (h.disconnect(), n && n.parentNode && n.parentNode.removeChild(n));
       }).observe(t, { childList: !0, subtree: !0 });
     }
   }), e;

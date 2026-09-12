@@ -1,11 +1,12 @@
-var b = Object.defineProperty;
-var y = (r, e, t) => e in r ? b(r, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : r[e] = t;
-var c = (r, e, t) => y(r, typeof e != "symbol" ? e + "" : e, t);
-class E {
+var v = Object.defineProperty;
+var C = (n, e, t) => e in n ? v(n, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : n[e] = t;
+var c = (n, e, t) => C(n, typeof e != "symbol" ? e + "" : e, t);
+class b {
   constructor(e, t = {}) {
     c(this, "textarea");
     c(this, "storageKey");
-    if (!e || !(e instanceof HTMLTextAreaElement))
+    var r;
+    if (!e || ((r = e.tagName) == null ? void 0 : r.toLowerCase()) !== "textarea")
       throw new Error("MoodleTextareaAdapter requires a valid HTMLTextAreaElement.");
     this.textarea = e, this.storageKey = this.generateStorageKey(), t.hideTextarea !== !1 && !this.textarea.hasAttribute("data-lms-widget-show-answerbox") && this.hideTextarea();
   }
@@ -25,13 +26,13 @@ class E {
    * Generates a stable unique hash identifier for this textarea based on location and identifier.
    */
   generateStorageKey() {
-    const e = typeof window < "u" && window.location ? window.location.origin : "host", t = typeof window < "u" && window.location ? window.location.pathname : "", s = this.textarea.name || this.textarea.id || "unnamed-box", i = `${e}${t}#${s}`;
-    let o = 0;
-    for (let a = 0; a < i.length; a++) {
-      const l = i.charCodeAt(a);
-      o = (o << 5) - o + l, o |= 0;
+    const e = typeof window < "u" && window.location ? window.location.origin : "host", t = typeof window < "u" && window.location ? window.location.pathname : "", s = this.textarea.name || this.textarea.id || "unnamed-box", r = `${e}${t}#${s}`;
+    let a = 0;
+    for (let o = 0; o < r.length; o++) {
+      const l = r.charCodeAt(o);
+      a = (a << 5) - a + l, a |= 0;
     }
-    return `lms_widget_backup_${Math.abs(o).toString(36)}`;
+    return `lms_widget_backup_${Math.abs(a).toString(36)}`;
   }
   /**
    * Retrieves the current content.
@@ -44,8 +45,16 @@ class E {
     try {
       if (typeof window < "u" && window.localStorage) {
         const t = window.localStorage.getItem(this.storageKey);
-        if (t && t.trim().length > 0)
-          return this.textarea.value = t, this.dispatchChangeEvents(), t;
+        if (t && t.trim().length > 0) {
+          let s = t;
+          try {
+            const r = JSON.parse(t);
+            r && typeof r == "object" && typeof r.content == "string" && (s = r.content);
+          } catch {
+          }
+          if (s && s.trim().length > 0)
+            return this.textarea.value = s, this.dispatchChangeEvents(), s;
+        }
       }
     } catch (t) {
       console.warn("[MoodleTextareaAdapter] Unable to access localStorage during load:", t);
@@ -63,7 +72,11 @@ class E {
     try {
       if (this.textarea.value = e, this.dispatchChangeEvents(), typeof window < "u" && window.localStorage)
         try {
-          window.localStorage.setItem(this.storageKey, e);
+          const s = JSON.stringify({
+            content: e,
+            timestamp: Date.now()
+          });
+          window.localStorage.setItem(this.storageKey, s);
         } catch (s) {
           console.warn("[MoodleTextareaAdapter] LocalStorage backup write failed:", s);
         }
@@ -92,8 +105,35 @@ class E {
     const e = new Event("input", { bubbles: !0, cancelable: !0 }), t = new Event("change", { bubbles: !0, cancelable: !0 });
     this.textarea.dispatchEvent(e), this.textarea.dispatchEvent(t);
   }
+  /**
+   * Cleans up local storage backups that are older than maxAgeDays.
+   */
+  static garbageCollect(e = 14) {
+    if (typeof window > "u" || !window.localStorage) return;
+    const t = e * 24 * 60 * 60 * 1e3, s = Date.now(), r = [];
+    for (let a = 0; a < window.localStorage.length; a++) {
+      const o = window.localStorage.key(a);
+      if (o && o.startsWith("lms_widget_backup_"))
+        try {
+          const l = window.localStorage.getItem(o);
+          if (l) {
+            const i = JSON.parse(l);
+            i && typeof i == "object" && i.timestamp ? s - i.timestamp > t && r.push(o) : r.push(o);
+          }
+        } catch {
+          r.push(o);
+        }
+    }
+    for (const a of r)
+      window.localStorage.removeItem(a);
+  }
+  /**
+   * Cleanup lifecycle method to unbind event listeners and prevent memory leaks.
+   */
+  destroy() {
+  }
 }
-const g = {
+const h = {
   REQUEST_CONTENT: "REQUEST_CONTENT",
   SYNC_CONTENT: "SYNC_CONTENT",
   SYNC_HEIGHT: "SYNC_HEIGHT",
@@ -101,14 +141,15 @@ const g = {
   SYNC_ACK: "SYNC_ACK",
   ERROR_LOCKDOWN: "ERROR_LOCKDOWN"
 };
-class x {
+class S {
   constructor(e, t = "*") {
     c(this, "iframe");
     c(this, "targetOrigin");
     c(this, "handlers", /* @__PURE__ */ new Set());
     c(this, "isLockedDown", !1);
     c(this, "messageListener", null);
-    if (!e || !(e instanceof HTMLIFrameElement))
+    var s;
+    if (!e || ((s = e.tagName) == null ? void 0 : s.toLowerCase()) !== "iframe")
       throw new Error("IframeMessengerAdapter requires a valid HTMLIFrameElement.");
     this.iframe = e, this.targetOrigin = t, this.setupListener();
   }
@@ -125,10 +166,10 @@ class x {
         }
       if (!t || typeof t != "object")
         return;
-      const { type: s, payload: i, msgId: o } = t;
-      typeof s == "string" && this.handlers.forEach((a) => {
+      const { type: s, payload: r, msgId: a } = t;
+      typeof s == "string" && this.handlers.forEach((o) => {
         try {
-          a(s, i, o);
+          o(s, r, a);
         } catch (l) {
           console.error("[IframeMessengerAdapter] Error in message handler:", l);
         }
@@ -153,7 +194,7 @@ class x {
    */
   sendLoadContent(e, t) {
     this.post({
-      type: g.LOAD_CONTENT,
+      type: h.LOAD_CONTENT,
       payload: {
         content: e,
         config: t
@@ -165,7 +206,7 @@ class x {
    */
   sendSyncAck(e, t) {
     this.post({
-      type: g.SYNC_ACK,
+      type: h.SYNC_ACK,
       msgId: e,
       payload: {
         serverHash: t,
@@ -186,7 +227,7 @@ class x {
     if (!this.isLockedDown) {
       try {
         this.post({
-          type: g.ERROR_LOCKDOWN,
+          type: h.ERROR_LOCKDOWN,
           payload: { message: "Connection severed due to fatal sync error." }
         });
       } catch {
@@ -194,41 +235,47 @@ class x {
       this.isLockedDown = !0, this.handlers.clear(), this.messageListener && (window.removeEventListener("message", this.messageListener), this.messageListener = null);
     }
   }
+  /**
+   * Cleanup lifecycle method to unbind event listeners and prevent memory leaks.
+   */
+  destroy() {
+    this.handlers.clear(), this.messageListener && (window.removeEventListener("message", this.messageListener), this.messageListener = null);
+  }
 }
-class v {
+class L {
   constructor(e) {
     c(this, "element");
     c(this, "handlers", /* @__PURE__ */ new Set());
     c(this, "isLockedDown", !1);
     c(this, "cleanupFns", []);
-    if (!e || !(e instanceof HTMLElement))
+    if (!e || e.nodeType !== 1)
       throw new Error("DOMEventMessengerAdapter requires a valid HTMLElement.");
     this.element = e, this.setupListeners();
   }
   setupListeners() {
-    const e = (s, i) => {
-      const o = (a) => {
+    const e = (s, r) => {
+      const a = (o) => {
         if (this.isLockedDown) return;
-        const n = a.detail || {}, d = n.payload !== void 0 ? n.payload : n, u = n.msgId || n.payload && n.payload.msgId;
-        this.handlers.forEach((h) => {
+        const i = o.detail || {}, d = i.payload !== void 0 ? i.payload : i, f = i.msgId || i.payload && i.payload.msgId;
+        this.handlers.forEach((g) => {
           try {
-            h(i, d, u);
-          } catch (f) {
-            console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, f);
+            g(r, d, f);
+          } catch (u) {
+            console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, u);
           }
         });
       };
-      this.element.addEventListener(s, o), this.cleanupFns.push(() => this.element.removeEventListener(s, o));
+      this.element.addEventListener(s, a), this.cleanupFns.push(() => this.element.removeEventListener(s, a));
     };
-    e("widget:request-content", g.REQUEST_CONTENT), e("lms-widget:request-content", g.REQUEST_CONTENT), e("widget:sync-content", g.SYNC_CONTENT), e("lms-widget:sync-content", g.SYNC_CONTENT), e("widget:sync-height", g.SYNC_HEIGHT), e("lms-widget:sync-height", g.SYNC_HEIGHT);
+    e("widget:request-content", h.REQUEST_CONTENT), e("lms-widget:request-content", h.REQUEST_CONTENT), e("widget:sync-content", h.SYNC_CONTENT), e("lms-widget:sync-content", h.SYNC_CONTENT), e("widget:sync-height", h.SYNC_HEIGHT), e("lms-widget:sync-height", h.SYNC_HEIGHT);
     const t = (s) => {
       if (this.isLockedDown) return;
-      const i = s;
-      if (i.detail && i.detail.type) {
-        const { type: o, payload: a, msgId: l } = i.detail;
-        this.handlers.forEach((n) => {
+      const r = s;
+      if (r.detail && r.detail.type) {
+        const { type: a, payload: o, msgId: l } = r.detail;
+        this.handlers.forEach((i) => {
           try {
-            n(o, a, l);
+            i(a, o, l);
           } catch (d) {
             console.error("[DOMEventMessengerAdapter] Error handling generic message:", d);
           }
@@ -314,42 +361,51 @@ class v {
       this.cleanupFns = [];
     }
   }
+  /**
+   * Cleanup lifecycle method to unbind event listeners and prevent memory leaks.
+   */
+  destroy() {
+    this.handlers.clear();
+    for (const e of this.cleanupFns)
+      e();
+    this.cleanupFns = [];
+  }
 }
-function w(r, e) {
-  var h;
-  const t = (r == null ? void 0 : r.getAttribute("data-run-mode")) || ((h = document.body) == null ? void 0 : h.getAttribute("data-run-mode"));
+function E(n, e) {
+  var g;
+  const t = (n == null ? void 0 : n.getAttribute("data-run-mode")) || ((g = document.body) == null ? void 0 : g.getAttribute("data-run-mode"));
   if (t === "edit" || t === "attempt" || t === "grade" || t === "review")
     return t;
-  const s = typeof window < "u" && window.location ? window.location.href : "", i = typeof window < "u" && window.location ? window.location.pathname : "", o = typeof window < "u" && window.location ? window.location.search : "";
-  if (i.includes("/question/question.php") || i.includes("/question/bank/editquestion/") || s.includes("/question/question.php") || s.includes("/question/bank/editquestion/"))
+  const s = typeof window < "u" && window.location ? window.location.href : "", r = typeof window < "u" && window.location ? window.location.pathname : "", a = typeof window < "u" && window.location ? window.location.search : "";
+  if (r.includes("/question/question.php") || r.includes("/question/bank/editquestion/") || s.includes("/question/question.php") || s.includes("/question/bank/editquestion/"))
     return "edit";
-  const a = (i.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && o.includes("mode=grading"), l = (r == null ? void 0 : r.closest(".que, .form-item, form, body")) || document.body, n = !!(l != null && l.querySelector(
+  const o = (r.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && a.includes("mode=grading"), l = (n == null ? void 0 : n.closest(".que, .form-item, form, body")) || document.body, i = !!(l != null && l.querySelector(
     ".comment-area, .gradingform, .qtype_essay_response_form, .commenttext"
   ));
-  if (a || n)
+  if (o || i)
     return "grade";
-  const d = i.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), u = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (r == null ? void 0 : r.getAttribute("data-readonly")) === "true";
-  return d || u && !a && !n ? "review" : "attempt";
+  const d = r.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), f = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (n == null ? void 0 : n.getAttribute("data-readonly")) === "true";
+  return d || f && !o && !i ? "review" : "attempt";
 }
 class T {
-  constructor(e, t, s, i = {}) {
+  constructor(e, t, s, r = {}) {
     c(this, "mountPoint");
     c(this, "storage");
     c(this, "messenger");
     c(this, "config");
     c(this, "isErrorState", !1);
     c(this, "widgetTarget", null);
-    var l, n;
-    if (!e || !(e instanceof HTMLElement))
+    var l, i;
+    if (!e || e.nodeType !== 1)
       throw new Error("WidgetController requires a valid mount point HTMLElement.");
     this.mountPoint = e, this.storage = t, this.messenger = s, this.widgetTarget = this.mountPoint.querySelector("[data-lms-widget]") || this.mountPoint.querySelector("iframe, [data-widget-embedded]") || this.mountPoint.firstElementChild || this.mountPoint;
-    const o = i.runMode || ((l = i.config) == null ? void 0 : l.runMode) || w(this.mountPoint), a = ((n = i.config) == null ? void 0 : n.isReadOnly) !== void 0 ? i.config.isReadOnly : this.storage.isReadOnly() || o === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
+    const a = r.runMode || ((l = r.config) == null ? void 0 : l.runMode) || E(this.mountPoint), o = ((i = r.config) == null ? void 0 : i.isReadOnly) !== void 0 ? r.config.isReadOnly : this.storage.isReadOnly() || a === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
     this.config = {
-      isReadOnly: a,
-      runMode: o,
+      isReadOnly: o,
+      runMode: a,
       defaultCellType: this.mountPoint.getAttribute("data-default-cell-type") || void 0,
       disableInsertAll: this.mountPoint.getAttribute("data-disable-insert-all") === "true",
-      ...i.config
+      ...r.config
     }, this.init();
   }
   /**
@@ -381,16 +437,16 @@ class T {
     this.messenger.onMessage((e, t, s) => {
       if (!this.isErrorState)
         switch (e) {
-          case g.REQUEST_CONTENT: {
-            const i = this.storage.load();
-            this.messenger.sendLoadContent(i, this.config);
+          case h.REQUEST_CONTENT: {
+            const r = this.storage.load();
+            this.messenger.sendLoadContent(r, this.config);
             break;
           }
-          case g.SYNC_CONTENT: {
+          case h.SYNC_CONTENT: {
             this.handleSyncContent(t, s);
             break;
           }
-          case g.SYNC_HEIGHT: {
+          case h.SYNC_HEIGHT: {
             this.handleSyncHeight(t);
             break;
           }
@@ -401,10 +457,10 @@ class T {
    * Handles incoming SYNC_CONTENT messages from the widget.
    */
   handleSyncContent(e, t) {
-    let s = "", i = t || "";
-    if (typeof e == "string" ? s = e : e && typeof e == "object" && (s = typeof e.content == "string" ? e.content : JSON.stringify(e.content ?? e), !i && e.msgId && (i = e.msgId)), this.storage.save(s)) {
-      const a = this.computeHash(s);
-      this.messenger.sendSyncAck(i, a);
+    let s = "", r = t || "";
+    if (typeof e == "string" ? s = e : e && typeof e == "object" && (s = typeof e.content == "string" ? e.content : JSON.stringify(e.content ?? e), !r && e.msgId && (r = e.msgId)), this.storage.save(s)) {
+      const o = this.computeHash(s);
+      this.messenger.sendSyncAck(r, o);
     } else
       console.error("[WidgetController] Storage save returned false. Triggering Fatal Error State."), this.triggerErrorState("Host rejected the write or storage verification failed.");
   }
@@ -412,8 +468,9 @@ class T {
    * Handles height synchronization from widgets to eliminate scrollbars.
    */
   handleSyncHeight(e) {
+    var s;
     const t = typeof e == "number" ? e : e == null ? void 0 : e.height;
-    typeof t == "number" && t > 0 && this.widgetTarget && this.widgetTarget instanceof HTMLIFrameElement && (this.widgetTarget.style.height = `${t}px`);
+    typeof t == "number" && t > 0 && this.widgetTarget && ((s = this.widgetTarget.tagName) == null ? void 0 : s.toLowerCase()) === "iframe" && (this.widgetTarget.style.height = `${t}px`);
   }
   /**
    * Computes a quick hash of the saved content for sync acknowledgement.
@@ -483,35 +540,41 @@ class T {
         Reload Page
       </button>
     `;
-    const i = s.querySelector(".widget-reload-btn");
-    i && i.addEventListener("click", () => {
+    const r = s.querySelector(".widget-reload-btn");
+    r && r.addEventListener("click", () => {
       window.location.reload();
     }), this.mountPoint.appendChild(s);
   }
   getIsErrorState() {
     return this.isErrorState;
   }
+  /**
+   * Cleanup lifecycle method to tear down the controller and its adapters.
+   */
+  destroy() {
+    this.storage.destroy && this.storage.destroy(), this.messenger.destroy && this.messenger.destroy();
+  }
 }
-const C = [];
-function L(r) {
-  var a, l, n;
-  const e = r.getAttribute("data-lms-target-textarea") || r.getAttribute("data-target-textarea") || r.getAttribute("data-target") || r.getAttribute("data-lms-textarea-selector") || r.getAttribute("data-textarea-selector");
+const m = [];
+function A(n) {
+  var o, l, i;
+  const e = n.getAttribute("data-lms-target-textarea") || n.getAttribute("data-target-textarea") || n.getAttribute("data-target") || n.getAttribute("data-lms-textarea-selector") || n.getAttribute("data-textarea-selector");
   if (e) {
     const d = document.querySelector(e);
-    if (d && ((a = d.tagName) == null ? void 0 : a.toLowerCase()) === "textarea")
+    if (d && ((o = d.tagName) == null ? void 0 : o.toLowerCase()) === "textarea")
       return d;
   }
-  const t = r.getAttribute("data-lms-textarea-name") || r.getAttribute("data-textarea-name");
+  const t = n.getAttribute("data-lms-textarea-name") || n.getAttribute("data-textarea-name");
   if (t) {
     const d = document.querySelector(`textarea[name="${t}"]`);
     if (d && ((l = d.tagName) == null ? void 0 : l.toLowerCase()) === "textarea")
       return d;
   }
-  const s = r.closest(".que, .form-item, .fitem, .felement, form, body") || document.body, o = Array.from(s.querySelectorAll("textarea")).find((d) => !r.contains(d));
-  return o && ((n = o.tagName) == null ? void 0 : n.toLowerCase()) === "textarea" ? o : null;
+  const s = n.closest(".que, .form-item, .fitem, .felement, form, body") || document.body, a = Array.from(s.querySelectorAll("textarea")).find((d) => !n.contains(d));
+  return a && ((i = a.tagName) == null ? void 0 : i.toLowerCase()) === "textarea" ? a : null;
 }
-function m(r, e) {
-  r.innerHTML = "", r.style.position = "relative";
+function y(n, e) {
+  n.innerHTML = "", n.style.position = "relative";
   const t = document.createElement("div");
   t.className = "lms-widget-collision-banner widget-collision-error-banner", t.setAttribute("role", "alert"), t.style.cssText = `
     background-color: #b71c1c;
@@ -529,66 +592,85 @@ function m(r, e) {
       <strong style="font-size: 16px;">LMS Widget Fail-Fast Collision Error</strong>
     </div>
     <p style="margin: 0;">${e}</p>
-  `, r.appendChild(t);
+  `, n.appendChild(t);
 }
-function p() {
-  const r = document.querySelectorAll(
+function x() {
+  b.garbageCollect(14);
+  const n = document.querySelectorAll(
     ".lms-widget-container:not([data-lms-widget-initialized]):not([data-widget-initialized]), .widget-mount-point:not([data-lms-widget-initialized]):not([data-widget-initialized])"
   ), e = [];
-  return r.forEach((t) => {
-    const s = L(t);
+  return n.forEach((t) => {
+    const s = A(t);
     if (!s) {
       console.error(
         "[LMS Widget Manager] Bootstrapper could not find target textarea for container:",
         t
-      ), m(t, "Target LMS textarea could not be located for this widget."), t.setAttribute("data-lms-widget-initialized", "error"), t.setAttribute("data-widget-initialized", "error");
+      ), y(t, "Target LMS textarea could not be located for this widget."), t.setAttribute("data-lms-widget-initialized", "error"), t.setAttribute("data-widget-initialized", "error");
       return;
     }
     if (s.getAttribute("data-lms-widget-bound") === "true" || s.getAttribute("data-widget-bound") === "true") {
       console.error(
         "[LMS Widget Manager] Collision detected: Multiple widgets bound to same box!",
         s
-      ), m(
+      ), y(
         t,
         "Multiple widgets bound to same box. Initialization aborted to prevent data corruption."
       ), t.setAttribute("data-lms-widget-initialized", "error"), t.setAttribute("data-widget-initialized", "error");
       return;
     }
     s.setAttribute("data-lms-widget-bound", "true"), s.setAttribute("data-widget-bound", "true"), t.setAttribute("data-lms-widget-initialized", "true"), t.setAttribute("data-widget-initialized", "true");
-    const i = t.querySelector("[data-lms-widget]"), o = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (i == null ? void 0 : i.hasAttribute("data-lms-widget-show-answerbox")), a = new E(s, {
-      hideTextarea: !o
+    const r = t.querySelector("[data-lms-widget]"), a = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (r == null ? void 0 : r.hasAttribute("data-lms-widget-show-answerbox")), o = new b(s, {
+      hideTextarea: !a
     }), l = () => {
-      var u;
-      let n = null;
+      var f;
+      let i = null;
       const d = t.querySelector("[data-lms-widget]");
-      if (d && (d.hasAttribute("data-lms-widget-show-answerbox") && ((u = a.showTextarea) == null || u.call(a)), d.tagName.toLowerCase() === "iframe" ? n = new x(d) : n = new v(d)), n) {
-        const h = w(t, s), f = new T(t, a, n, { runMode: h });
-        return e.push(f), C.push(f), !0;
+      if (d)
+        if (d.hasAttribute("data-lms-widget-show-answerbox") && ((f = o.showTextarea) == null || f.call(o)), d.tagName.toLowerCase() === "iframe") {
+          let g = "*";
+          const u = d.getAttribute("data-lms-widget-origin") || t.getAttribute("data-lms-widget-origin");
+          if (u)
+            g = u;
+          else if (d.hasAttribute("src"))
+            try {
+              g = new URL(d.getAttribute("src") || "", window.location.href).origin;
+            } catch {
+            }
+          i = new S(d, g);
+        } else
+          i = new L(d);
+      if (i) {
+        const g = E(t, s), u = new T(t, o, i, { runMode: g }), p = u.destroy.bind(u);
+        return u.destroy = () => {
+          p();
+          const w = m.indexOf(u);
+          w > -1 && m.splice(w, 1);
+        }, e.push(u), m.push(u), !0;
       }
       return !1;
     };
     if (!l()) {
-      let n = t.querySelector(
+      let i = t.querySelector(
         ".lms-widget-placeholder, .widget-placeholder, [data-lms-widget-placeholder]"
       );
-      n ? n.innerHTML = "Loading answer box..." : (n = document.createElement("div"), n.className = "lms-widget-placeholder widget-placeholder", n.innerHTML = "Loading answer box...", n.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(n)), new MutationObserver((u, h) => {
-        l() && (h.disconnect(), n && n.parentNode && n.parentNode.removeChild(n));
+      i ? i.innerHTML = "Loading answer box..." : (i = document.createElement("div"), i.className = "lms-widget-placeholder widget-placeholder", i.innerHTML = "Loading answer box...", i.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(i)), new MutationObserver((f, g) => {
+        l() && (g.disconnect(), i && i.parentNode && i.parentNode.removeChild(i));
       }).observe(t, { childList: !0, subtree: !0 });
     }
   }), e;
 }
 typeof window < "u" && typeof document < "u" && (document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => {
-  p();
-}) : p());
+  x();
+}) : x());
 export {
-  v as DOMEventMessengerAdapter,
-  x as IframeMessengerAdapter,
-  E as MoodleTextareaAdapter,
-  v as WebComponentMessengerAdapter,
+  L as DOMEventMessengerAdapter,
+  S as IframeMessengerAdapter,
+  b as MoodleTextareaAdapter,
+  L as WebComponentMessengerAdapter,
   T as WidgetController,
-  g as WidgetMessageTypes,
-  C as activeControllers,
-  p as bootstrap,
-  w as sniffMoodleContext
+  h as WidgetMessageTypes,
+  m as activeControllers,
+  x as bootstrap,
+  E as sniffMoodleContext
 };
 //# sourceMappingURL=lms-widget-manager.es.js.map

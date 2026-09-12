@@ -5,10 +5,12 @@ class b {
   constructor(e, t = {}) {
     c(this, "textarea");
     c(this, "storageKey");
+    c(this, "observer", null);
+    c(this, "disconnectCallbacks", []);
     var r;
     if (!e || ((r = e.tagName) == null ? void 0 : r.toLowerCase()) !== "textarea")
       throw new Error("MoodleTextareaAdapter requires a valid HTMLTextAreaElement.");
-    this.textarea = e, this.storageKey = this.generateStorageKey(), t.hideTextarea !== !1 && !this.textarea.hasAttribute("data-lms-widget-show-answerbox") && this.hideTextarea();
+    this.textarea = e, this.storageKey = this.generateStorageKey(), t.hideTextarea !== !1 && !this.textarea.hasAttribute("data-lms-widget-show-answerbox") && this.hideTextarea(), this.setupDomWatcher();
   }
   /**
    * Visually hides the Moodle textarea while preserving its presence in the form for submission.
@@ -21,6 +23,48 @@ class b {
    */
   showTextarea() {
     this.textarea.style.position = "", this.textarea.style.left = "", this.textarea.style.opacity = "", this.textarea.style.pointerEvents = "", this.textarea.removeAttribute("tabindex"), this.textarea.removeAttribute("aria-hidden");
+  }
+  /**
+   * Checks if the textarea is currently attached and connected to the live DOM.
+   */
+  isAttached() {
+    if (!this.textarea) return !1;
+    if (typeof this.textarea.isConnected == "boolean")
+      return this.textarea.isConnected;
+    const e = this.textarea.ownerDocument || (typeof document < "u" ? document : null);
+    return !!(e && e.contains && e.contains(this.textarea));
+  }
+  /**
+   * Proactively monitors the DOM to detect if the target textarea is deleted.
+   */
+  setupDomWatcher() {
+    var s;
+    const e = this.textarea.ownerDocument && ((s = this.textarea.ownerDocument.defaultView) == null ? void 0 : s.MutationObserver) || (typeof MutationObserver < "u" ? MutationObserver : null);
+    if (!e) return;
+    this.observer = new e(() => {
+      this.isAttached() || (this.notifyDisconnect(), this.observer && (this.observer.disconnect(), this.observer = null));
+    });
+    const t = this.textarea.parentNode || this.textarea.ownerDocument && this.textarea.ownerDocument.body;
+    t && this.observer.observe(t, { childList: !0, subtree: !0 });
+  }
+  onDisconnect(e) {
+    if (this.disconnectCallbacks.push(e), !this.isAttached())
+      try {
+        e();
+      } catch (t) {
+        console.error("[MoodleTextareaAdapter] Error in disconnect callback:", t);
+      }
+  }
+  notifyDisconnect() {
+    if (this.disconnectCallbacks.length === 0) return;
+    const e = [...this.disconnectCallbacks];
+    this.disconnectCallbacks = [], e.forEach((t) => {
+      try {
+        t();
+      } catch (s) {
+        console.error("[MoodleTextareaAdapter] Error in disconnect callback:", s);
+      }
+    });
   }
   /**
    * Generates a stable unique hash identifier for this textarea based on location and identifier.
@@ -67,6 +111,8 @@ class b {
    * Returns false if the write was rejected or failed verification.
    */
   save(e) {
+    if (!this.isAttached())
+      return console.error("[MoodleTextareaAdapter] Cannot save: Target textarea is detached or deleted from the DOM."), this.notifyDisconnect(), !1;
     if (this.isReadOnly())
       return console.warn("[MoodleTextareaAdapter] Cannot save: Host textarea is read-only or disabled."), !1;
     try {
@@ -80,8 +126,8 @@ class b {
         } catch (s) {
           console.warn("[MoodleTextareaAdapter] LocalStorage backup write failed:", s);
         }
-      const t = this.textarea.value === e;
-      return t || console.error("[MoodleTextareaAdapter] Verification failed: textarea value does not match content."), t;
+      const t = this.isAttached() && this.textarea.value === e;
+      return t || (console.error("[MoodleTextareaAdapter] Verification failed: textarea value does not match content or element detached."), this.notifyDisconnect()), t;
     } catch (t) {
       return console.error("[MoodleTextareaAdapter] Failed to save content to textarea:", t), !1;
     }
@@ -131,9 +177,10 @@ class b {
    * Cleanup lifecycle method to unbind event listeners and prevent memory leaks.
    */
   destroy() {
+    this.observer && (this.observer.disconnect(), this.observer = null), this.disconnectCallbacks = [];
   }
 }
-const h = {
+const g = {
   REQUEST_CONTENT: "REQUEST_CONTENT",
   SYNC_CONTENT: "SYNC_CONTENT",
   SYNC_HEIGHT: "SYNC_HEIGHT",
@@ -194,7 +241,7 @@ class S {
    */
   sendLoadContent(e, t) {
     this.post({
-      type: h.LOAD_CONTENT,
+      type: g.LOAD_CONTENT,
       payload: {
         content: e,
         config: t
@@ -206,7 +253,7 @@ class S {
    */
   sendSyncAck(e, t) {
     this.post({
-      type: h.SYNC_ACK,
+      type: g.SYNC_ACK,
       msgId: e,
       payload: {
         serverHash: t,
@@ -227,7 +274,7 @@ class S {
     if (!this.isLockedDown) {
       try {
         this.post({
-          type: h.ERROR_LOCKDOWN,
+          type: g.ERROR_LOCKDOWN,
           payload: { message: "Connection severed due to fatal sync error." }
         });
       } catch {
@@ -242,7 +289,7 @@ class S {
     this.handlers.clear(), this.messageListener && (window.removeEventListener("message", this.messageListener), this.messageListener = null);
   }
 }
-class L {
+class A {
   constructor(e) {
     c(this, "element");
     c(this, "handlers", /* @__PURE__ */ new Set());
@@ -257,9 +304,9 @@ class L {
       const a = (o) => {
         if (this.isLockedDown) return;
         const i = o.detail || {}, d = i.payload !== void 0 ? i.payload : i, f = i.msgId || i.payload && i.payload.msgId;
-        this.handlers.forEach((g) => {
+        this.handlers.forEach((h) => {
           try {
-            g(r, d, f);
+            h(r, d, f);
           } catch (u) {
             console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, u);
           }
@@ -267,7 +314,7 @@ class L {
       };
       this.element.addEventListener(s, a), this.cleanupFns.push(() => this.element.removeEventListener(s, a));
     };
-    e("widget:request-content", h.REQUEST_CONTENT), e("lms-widget:request-content", h.REQUEST_CONTENT), e("widget:sync-content", h.SYNC_CONTENT), e("lms-widget:sync-content", h.SYNC_CONTENT), e("widget:sync-height", h.SYNC_HEIGHT), e("lms-widget:sync-height", h.SYNC_HEIGHT);
+    e("widget:request-content", g.REQUEST_CONTENT), e("lms-widget:request-content", g.REQUEST_CONTENT), e("widget:sync-content", g.SYNC_CONTENT), e("lms-widget:sync-content", g.SYNC_CONTENT), e("widget:sync-height", g.SYNC_HEIGHT), e("lms-widget:sync-height", g.SYNC_HEIGHT);
     const t = (s) => {
       if (this.isLockedDown) return;
       const r = s;
@@ -372,8 +419,8 @@ class L {
   }
 }
 function E(n, e) {
-  var g;
-  const t = (n == null ? void 0 : n.getAttribute("data-run-mode")) || ((g = document.body) == null ? void 0 : g.getAttribute("data-run-mode"));
+  var h;
+  const t = (n == null ? void 0 : n.getAttribute("data-run-mode")) || ((h = document.body) == null ? void 0 : h.getAttribute("data-run-mode"));
   if (t === "edit" || t === "attempt" || t === "grade" || t === "review")
     return t;
   const s = typeof window < "u" && window.location ? window.location.href : "", r = typeof window < "u" && window.location ? window.location.pathname : "", a = typeof window < "u" && window.location ? window.location.search : "";
@@ -420,7 +467,9 @@ class T {
   init() {
     this.cleanupPlaceholderUI(), this.setupMessengerListeners();
     const e = this.storage.load();
-    this.messenger.sendLoadContent(e, this.config);
+    this.messenger.sendLoadContent(e, this.config), this.storage.onDisconnect && this.storage.onDisconnect(() => {
+      this.isErrorState || (console.error("[WidgetController] Target LMS textarea was disconnected or removed from the DOM. Triggering Fatal Error State."), this.triggerErrorState("Target LMS answerbox was removed or disconnected from the DOM."));
+    });
   }
   /**
    * Cleans up any loading indicators or placeholder UI within the mount point.
@@ -437,16 +486,16 @@ class T {
     this.messenger.onMessage((e, t, s) => {
       if (!this.isErrorState)
         switch (e) {
-          case h.REQUEST_CONTENT: {
+          case g.REQUEST_CONTENT: {
             const r = this.storage.load();
             this.messenger.sendLoadContent(r, this.config);
             break;
           }
-          case h.SYNC_CONTENT: {
+          case g.SYNC_CONTENT: {
             this.handleSyncContent(t, s);
             break;
           }
-          case h.SYNC_HEIGHT: {
+          case g.SYNC_HEIGHT: {
             this.handleSyncHeight(t);
             break;
           }
@@ -461,8 +510,11 @@ class T {
     if (typeof e == "string" ? s = e : e && typeof e == "object" && (s = typeof e.content == "string" ? e.content : JSON.stringify(e.content ?? e), !r && e.msgId && (r = e.msgId)), this.storage.save(s)) {
       const o = this.computeHash(s);
       this.messenger.sendSyncAck(r, o);
-    } else
-      console.error("[WidgetController] Storage save returned false. Triggering Fatal Error State."), this.triggerErrorState("Host rejected the write or storage verification failed.");
+    } else {
+      console.error("[WidgetController] Storage save returned false. Triggering Fatal Error State.");
+      const o = !this.storage.isAttached || this.storage.isAttached() ? "Host rejected the write or storage verification failed." : "Target LMS answerbox was removed or disconnected from the DOM.";
+      this.triggerErrorState(o);
+    }
   }
   /**
    * Handles height synchronization from widgets to eliminate scrollbars.
@@ -556,7 +608,7 @@ class T {
   }
 }
 const m = [];
-function A(n) {
+function L(n) {
   var o, l, i;
   const e = n.getAttribute("data-lms-target-textarea") || n.getAttribute("data-target-textarea") || n.getAttribute("data-target") || n.getAttribute("data-lms-textarea-selector") || n.getAttribute("data-textarea-selector");
   if (e) {
@@ -600,7 +652,7 @@ function x() {
     ".lms-widget-container:not([data-lms-widget-initialized]):not([data-widget-initialized]), .widget-mount-point:not([data-lms-widget-initialized]):not([data-widget-initialized])"
   ), e = [];
   return n.forEach((t) => {
-    const s = A(t);
+    const s = L(t);
     if (!s) {
       console.error(
         "[LMS Widget Manager] Bootstrapper could not find target textarea for container:",
@@ -627,20 +679,20 @@ function x() {
       const d = t.querySelector("[data-lms-widget]");
       if (d)
         if (d.hasAttribute("data-lms-widget-show-answerbox") && ((f = o.showTextarea) == null || f.call(o)), d.tagName.toLowerCase() === "iframe") {
-          let g = "*";
+          let h = "*";
           const u = d.getAttribute("data-lms-widget-origin") || t.getAttribute("data-lms-widget-origin");
           if (u)
-            g = u;
+            h = u;
           else if (d.hasAttribute("src"))
             try {
-              g = new URL(d.getAttribute("src") || "", window.location.href).origin;
+              h = new URL(d.getAttribute("src") || "", window.location.href).origin;
             } catch {
             }
-          i = new S(d, g);
+          i = new S(d, h);
         } else
-          i = new L(d);
+          i = new A(d);
       if (i) {
-        const g = E(t, s), u = new T(t, o, i, { runMode: g }), p = u.destroy.bind(u);
+        const h = E(t, s), u = new T(t, o, i, { runMode: h }), p = u.destroy.bind(u);
         return u.destroy = () => {
           p();
           const w = m.indexOf(u);
@@ -653,8 +705,8 @@ function x() {
       let i = t.querySelector(
         ".lms-widget-placeholder, .widget-placeholder, [data-lms-widget-placeholder]"
       );
-      i ? i.innerHTML = "Loading answer box..." : (i = document.createElement("div"), i.className = "lms-widget-placeholder widget-placeholder", i.innerHTML = "Loading answer box...", i.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(i)), new MutationObserver((f, g) => {
-        l() && (g.disconnect(), i && i.parentNode && i.parentNode.removeChild(i));
+      i ? i.innerHTML = "Loading answer box..." : (i = document.createElement("div"), i.className = "lms-widget-placeholder widget-placeholder", i.innerHTML = "Loading answer box...", i.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(i)), new MutationObserver((f, h) => {
+        l() && (h.disconnect(), i && i.parentNode && i.parentNode.removeChild(i));
       }).observe(t, { childList: !0, subtree: !0 });
     }
   }), e;
@@ -663,12 +715,12 @@ typeof window < "u" && typeof document < "u" && (document.readyState === "loadin
   x();
 }) : x());
 export {
-  L as DOMEventMessengerAdapter,
+  A as DOMEventMessengerAdapter,
   S as IframeMessengerAdapter,
   b as MoodleTextareaAdapter,
-  L as WebComponentMessengerAdapter,
+  A as WebComponentMessengerAdapter,
   T as WidgetController,
-  h as WidgetMessageTypes,
+  g as WidgetMessageTypes,
   m as activeControllers,
   x as bootstrap,
   E as sniffMoodleContext

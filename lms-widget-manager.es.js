@@ -1,6 +1,6 @@
 var v = Object.defineProperty;
-var C = (n, e, t) => e in n ? v(n, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : n[e] = t;
-var c = (n, e, t) => C(n, typeof e != "symbol" ? e + "" : e, t);
+var C = (o, e, t) => e in o ? v(o, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : o[e] = t;
+var c = (o, e, t) => C(o, typeof e != "symbol" ? e + "" : e, t);
 class b {
   constructor(e, t = {}) {
     c(this, "textarea");
@@ -71,12 +71,12 @@ class b {
    */
   generateStorageKey() {
     const e = typeof window < "u" && window.location ? window.location.origin : "host", t = typeof window < "u" && window.location ? window.location.pathname : "", s = this.textarea.name || this.textarea.id || "unnamed-box", r = `${e}${t}#${s}`;
-    let a = 0;
-    for (let o = 0; o < r.length; o++) {
-      const l = r.charCodeAt(o);
-      a = (a << 5) - a + l, a |= 0;
+    let d = 0;
+    for (let i = 0; i < r.length; i++) {
+      const l = r.charCodeAt(i);
+      d = (d << 5) - d + l, d |= 0;
     }
-    return `lms_widget_backup_${Math.abs(a).toString(36)}`;
+    return `lms_widget_backup_${Math.abs(d).toString(36)}`;
   }
   /**
    * Retrieves the current content.
@@ -157,21 +157,21 @@ class b {
   static garbageCollect(e = 14) {
     if (typeof window > "u" || !window.localStorage) return;
     const t = e * 24 * 60 * 60 * 1e3, s = Date.now(), r = [];
-    for (let a = 0; a < window.localStorage.length; a++) {
-      const o = window.localStorage.key(a);
-      if (o && o.startsWith("lms_widget_backup_"))
+    for (let d = 0; d < window.localStorage.length; d++) {
+      const i = window.localStorage.key(d);
+      if (i && i.startsWith("lms_widget_backup_"))
         try {
-          const l = window.localStorage.getItem(o);
+          const l = window.localStorage.getItem(i);
           if (l) {
-            const i = JSON.parse(l);
-            i && typeof i == "object" && i.timestamp ? s - i.timestamp > t && r.push(o) : r.push(o);
+            const n = JSON.parse(l);
+            n && typeof n == "object" && n.timestamp ? s - n.timestamp > t && r.push(i) : r.push(i);
           }
         } catch {
-          r.push(o);
+          r.push(i);
         }
     }
-    for (const a of r)
-      window.localStorage.removeItem(a);
+    for (const d of r)
+      window.localStorage.removeItem(d);
   }
   /**
    * Cleanup lifecycle method to unbind event listeners and prevent memory leaks.
@@ -180,15 +180,16 @@ class b {
     this.observer && (this.observer.disconnect(), this.observer = null), this.disconnectCallbacks = [];
   }
 }
-const g = {
+const h = {
   REQUEST_CONTENT: "REQUEST_CONTENT",
   SYNC_CONTENT: "SYNC_CONTENT",
   SYNC_HEIGHT: "SYNC_HEIGHT",
   LOAD_CONTENT: "LOAD_CONTENT",
+  INSERT_CONTENT: "INSERT_CONTENT",
   SYNC_ACK: "SYNC_ACK",
   ERROR_LOCKDOWN: "ERROR_LOCKDOWN"
 };
-class S {
+class T {
   constructor(e, t = "*") {
     c(this, "iframe");
     c(this, "targetOrigin");
@@ -213,10 +214,10 @@ class S {
         }
       if (!t || typeof t != "object")
         return;
-      const { type: s, payload: r, msgId: a } = t;
-      typeof s == "string" && this.handlers.forEach((o) => {
+      const { type: s, payload: r, msgId: d } = t;
+      typeof s == "string" && this.handlers.forEach((i) => {
         try {
-          o(s, r, a);
+          i(s, r, d);
         } catch (l) {
           console.error("[IframeMessengerAdapter] Error in message handler:", l);
         }
@@ -241,10 +242,21 @@ class S {
    */
   sendLoadContent(e, t) {
     this.post({
-      type: g.LOAD_CONTENT,
+      type: h.LOAD_CONTENT,
       payload: {
         content: e,
         config: t
+      }
+    });
+  }
+  /**
+   * Sends content insertion to the widget.
+   */
+  sendInsertContent(e) {
+    this.post({
+      type: h.INSERT_CONTENT,
+      payload: {
+        content: e
       }
     });
   }
@@ -253,7 +265,7 @@ class S {
    */
   sendSyncAck(e, t) {
     this.post({
-      type: g.SYNC_ACK,
+      type: h.SYNC_ACK,
       msgId: e,
       payload: {
         serverHash: t,
@@ -274,7 +286,7 @@ class S {
     if (!this.isLockedDown) {
       try {
         this.post({
-          type: g.ERROR_LOCKDOWN,
+          type: h.ERROR_LOCKDOWN,
           payload: { message: "Connection severed due to fatal sync error." }
         });
       } catch {
@@ -289,7 +301,7 @@ class S {
     this.handlers.clear(), this.messageListener && (window.removeEventListener("message", this.messageListener), this.messageListener = null);
   }
 }
-class A {
+class S {
   constructor(e) {
     c(this, "element");
     c(this, "handlers", /* @__PURE__ */ new Set());
@@ -301,30 +313,30 @@ class A {
   }
   setupListeners() {
     const e = (s, r) => {
-      const a = (o) => {
+      const d = (i) => {
         if (this.isLockedDown) return;
-        const i = o.detail || {}, d = i.payload !== void 0 ? i.payload : i, f = i.msgId || i.payload && i.payload.msgId;
-        this.handlers.forEach((h) => {
+        const n = i.detail || {}, a = n.payload !== void 0 ? n.payload : n, f = n.msgId || n.payload && n.payload.msgId;
+        this.handlers.forEach((u) => {
           try {
-            h(r, d, f);
-          } catch (u) {
-            console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, u);
+            u(r, a, f);
+          } catch (g) {
+            console.error(`[DOMEventMessengerAdapter] Error handling ${s}:`, g);
           }
         });
       };
-      this.element.addEventListener(s, a), this.cleanupFns.push(() => this.element.removeEventListener(s, a));
+      this.element.addEventListener(s, d), this.cleanupFns.push(() => this.element.removeEventListener(s, d));
     };
-    e("widget:request-content", g.REQUEST_CONTENT), e("lms-widget:request-content", g.REQUEST_CONTENT), e("widget:sync-content", g.SYNC_CONTENT), e("lms-widget:sync-content", g.SYNC_CONTENT), e("widget:sync-height", g.SYNC_HEIGHT), e("lms-widget:sync-height", g.SYNC_HEIGHT);
+    e("widget:request-content", h.REQUEST_CONTENT), e("lms-widget:request-content", h.REQUEST_CONTENT), e("widget:sync-content", h.SYNC_CONTENT), e("lms-widget:sync-content", h.SYNC_CONTENT), e("widget:sync-height", h.SYNC_HEIGHT), e("lms-widget:sync-height", h.SYNC_HEIGHT);
     const t = (s) => {
       if (this.isLockedDown) return;
       const r = s;
       if (r.detail && r.detail.type) {
-        const { type: a, payload: o, msgId: l } = r.detail;
-        this.handlers.forEach((i) => {
+        const { type: d, payload: i, msgId: l } = r.detail;
+        this.handlers.forEach((n) => {
           try {
-            i(a, o, l);
-          } catch (d) {
-            console.error("[DOMEventMessengerAdapter] Error handling generic message:", d);
+            n(d, i, l);
+          } catch (a) {
+            console.error("[DOMEventMessengerAdapter] Error handling generic message:", a);
           }
         });
       }
@@ -349,6 +361,23 @@ class A {
     ), this.element.dispatchEvent(
       new CustomEvent("widget:load-content", {
         detail: s,
+        bubbles: !0,
+        composed: !0
+      })
+    );
+  }
+  sendInsertContent(e) {
+    if (this.isLockedDown) return;
+    const t = { content: e, payload: e };
+    this.element.dispatchEvent(
+      new CustomEvent("host:insert-content", {
+        detail: t,
+        bubbles: !0,
+        composed: !0
+      })
+    ), this.element.dispatchEvent(
+      new CustomEvent("widget:insert-content", {
+        detail: t,
         bubbles: !0,
         composed: !0
       })
@@ -418,23 +447,23 @@ class A {
     this.cleanupFns = [];
   }
 }
-function E(n, e) {
-  var h;
-  const t = (n == null ? void 0 : n.getAttribute("data-run-mode")) || ((h = document.body) == null ? void 0 : h.getAttribute("data-run-mode"));
+function E(o, e) {
+  var g;
+  const t = (o == null ? void 0 : o.getAttribute("data-run-mode")) || ((g = document.body) == null ? void 0 : g.getAttribute("data-run-mode"));
   if (t === "edit" || t === "attempt" || t === "grade" || t === "review")
     return t;
-  const s = typeof window < "u" && window.location ? window.location.href : "", r = typeof window < "u" && window.location ? window.location.pathname : "", a = typeof window < "u" && window.location ? window.location.search : "";
+  const s = typeof window < "u" && window.location ? window.location.href : "", r = typeof window < "u" && window.location ? window.location.pathname : "", d = typeof window < "u" && window.location ? window.location.search : "";
   if (r.includes("/question/question.php") || r.includes("/question/bank/editquestion/") || s.includes("/question/question.php") || s.includes("/question/bank/editquestion/"))
     return "edit";
-  const o = (r.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && a.includes("mode=grading"), l = (n == null ? void 0 : n.closest(".que, .form-item, form, body")) || document.body, i = !!(l != null && l.querySelector(
+  const i = (r.includes("/mod/quiz/report.php") || s.includes("/mod/quiz/report.php")) && d.includes("mode=grading"), l = (o == null ? void 0 : o.closest(".que, .form-item, form, body")) || document.body, n = l == null ? void 0 : l.querySelector(
     ".comment-area, .gradingform, .qtype_essay_response_form, .commenttext"
-  ));
-  if (o || i)
+  ), a = !!(n && n.style.display !== "none" && !n.hidden && (typeof window > "u" || !window.getComputedStyle || window.getComputedStyle(n).display !== "none"));
+  if (i || a)
     return "grade";
-  const d = r.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), f = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (n == null ? void 0 : n.getAttribute("data-readonly")) === "true";
-  return d || f && !o && !i ? "review" : "attempt";
+  const f = r.includes("/mod/quiz/review.php") || s.includes("/mod/quiz/review.php"), u = (e == null ? void 0 : e.readOnly) || (e == null ? void 0 : e.disabled) || (e == null ? void 0 : e.getAttribute("aria-disabled")) === "true" || (o == null ? void 0 : o.getAttribute("data-readonly")) === "true";
+  return f || u && !i && !a ? "review" : "attempt";
 }
-class T {
+class A {
   constructor(e, t, s, r = {}) {
     c(this, "mountPoint");
     c(this, "storage");
@@ -442,14 +471,14 @@ class T {
     c(this, "config");
     c(this, "isErrorState", !1);
     c(this, "widgetTarget", null);
-    var l, i;
+    var l, n;
     if (!e || e.nodeType !== 1)
       throw new Error("WidgetController requires a valid mount point HTMLElement.");
     this.mountPoint = e, this.storage = t, this.messenger = s, this.widgetTarget = this.mountPoint.querySelector("[data-lms-widget]") || this.mountPoint.querySelector("iframe, [data-widget-embedded]") || this.mountPoint.firstElementChild || this.mountPoint;
-    const a = r.runMode || ((l = r.config) == null ? void 0 : l.runMode) || E(this.mountPoint), o = ((i = r.config) == null ? void 0 : i.isReadOnly) !== void 0 ? r.config.isReadOnly : this.storage.isReadOnly() || a === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
+    const d = r.runMode || ((l = r.config) == null ? void 0 : l.runMode) || E(this.mountPoint), i = ((n = r.config) == null ? void 0 : n.isReadOnly) !== void 0 ? r.config.isReadOnly : this.storage.isReadOnly() || d === "review" || this.mountPoint.hasAttribute("data-readonly") || this.mountPoint.getAttribute("data-readonly") === "true";
     this.config = {
-      isReadOnly: o,
-      runMode: a,
+      isReadOnly: i,
+      runMode: d,
       defaultCellType: this.mountPoint.getAttribute("data-default-cell-type") || void 0,
       disableInsertAll: this.mountPoint.getAttribute("data-disable-insert-all") === "true",
       ...r.config
@@ -463,6 +492,24 @@ class T {
   }
   getConfig() {
     return this.config;
+  }
+  getMountPoint() {
+    return this.mountPoint;
+  }
+  /**
+   * Pushes new content into the widget from the host page.
+   * Useful for "Use Starter Code" buttons outside the widget.
+   */
+  setContent(e) {
+    return this.isErrorState ? (console.warn("[WidgetController] Cannot set content: Widget is in an error state."), !1) : this.config.isReadOnly ? (console.warn("[WidgetController] Cannot set content: Widget is read-only."), !1) : (this.messenger.sendLoadContent(e, this.config), this.storage.save(e));
+  }
+  /**
+   * Pushes a snippet of text to the widget to be inserted at the current cursor position.
+   * Note: This does NOT save to the LMS directly. It relies on the widget to update its
+   * internal state and fire a SYNC_CONTENT message back with the fully merged text.
+   */
+  insertContent(e) {
+    return this.isErrorState ? (console.warn("[WidgetController] Cannot insert content: Widget is in an error state."), !1) : this.config.isReadOnly ? (console.warn("[WidgetController] Cannot insert content: Widget is read-only."), !1) : (this.messenger.sendInsertContent(e), !0);
   }
   init() {
     this.cleanupPlaceholderUI(), this.setupMessengerListeners();
@@ -486,16 +533,16 @@ class T {
     this.messenger.onMessage((e, t, s) => {
       if (!this.isErrorState)
         switch (e) {
-          case g.REQUEST_CONTENT: {
+          case h.REQUEST_CONTENT: {
             const r = this.storage.load();
             this.messenger.sendLoadContent(r, this.config);
             break;
           }
-          case g.SYNC_CONTENT: {
+          case h.SYNC_CONTENT: {
             this.handleSyncContent(t, s);
             break;
           }
-          case g.SYNC_HEIGHT: {
+          case h.SYNC_HEIGHT: {
             this.handleSyncHeight(t);
             break;
           }
@@ -508,12 +555,12 @@ class T {
   handleSyncContent(e, t) {
     let s = "", r = t || "";
     if (typeof e == "string" ? s = e : e && typeof e == "object" && (s = typeof e.content == "string" ? e.content : JSON.stringify(e.content ?? e), !r && e.msgId && (r = e.msgId)), this.storage.save(s)) {
-      const o = this.computeHash(s);
-      this.messenger.sendSyncAck(r, o);
+      const i = this.computeHash(s);
+      this.messenger.sendSyncAck(r, i);
     } else {
       console.error("[WidgetController] Storage save returned false. Triggering Fatal Error State.");
-      const o = !this.storage.isAttached || this.storage.isAttached() ? "Host rejected the write or storage verification failed." : "Target LMS answerbox was removed or disconnected from the DOM.";
-      this.triggerErrorState(o);
+      const i = !this.storage.isAttached || this.storage.isAttached() ? "Host rejected the write or storage verification failed." : "Target LMS answerbox was removed or disconnected from the DOM.";
+      this.triggerErrorState(i);
     }
   }
   /**
@@ -608,25 +655,25 @@ class T {
   }
 }
 const m = [];
-function L(n) {
-  var o, l, i;
-  const e = n.getAttribute("data-lms-target-textarea") || n.getAttribute("data-target-textarea") || n.getAttribute("data-target") || n.getAttribute("data-lms-textarea-selector") || n.getAttribute("data-textarea-selector");
+function L(o) {
+  var i, l, n;
+  const e = o.getAttribute("data-lms-target-textarea") || o.getAttribute("data-target-textarea") || o.getAttribute("data-target") || o.getAttribute("data-lms-textarea-selector") || o.getAttribute("data-textarea-selector");
   if (e) {
-    const d = document.querySelector(e);
-    if (d && ((o = d.tagName) == null ? void 0 : o.toLowerCase()) === "textarea")
-      return d;
+    const a = document.querySelector(e);
+    if (a && ((i = a.tagName) == null ? void 0 : i.toLowerCase()) === "textarea")
+      return a;
   }
-  const t = n.getAttribute("data-lms-textarea-name") || n.getAttribute("data-textarea-name");
+  const t = o.getAttribute("data-lms-textarea-name") || o.getAttribute("data-textarea-name");
   if (t) {
-    const d = document.querySelector(`textarea[name="${t}"]`);
-    if (d && ((l = d.tagName) == null ? void 0 : l.toLowerCase()) === "textarea")
-      return d;
+    const a = document.querySelector(`textarea[name="${t}"]`);
+    if (a && ((l = a.tagName) == null ? void 0 : l.toLowerCase()) === "textarea")
+      return a;
   }
-  const s = n.closest(".que, .form-item, .fitem, .felement, form, body") || document.body, a = Array.from(s.querySelectorAll("textarea")).find((d) => !n.contains(d));
-  return a && ((i = a.tagName) == null ? void 0 : i.toLowerCase()) === "textarea" ? a : null;
+  const s = o.closest(".que, .form-item, .fitem, .felement, form, body") || document.body, d = Array.from(s.querySelectorAll("textarea")).find((a) => !o.contains(a));
+  return d && ((n = d.tagName) == null ? void 0 : n.toLowerCase()) === "textarea" ? d : null;
 }
-function y(n, e) {
-  n.innerHTML = "", n.style.position = "relative";
+function y(o, e) {
+  o.innerHTML = "", o.style.position = "relative";
   const t = document.createElement("div");
   t.className = "lms-widget-collision-banner widget-collision-error-banner", t.setAttribute("role", "alert"), t.style.cssText = `
     background-color: #b71c1c;
@@ -644,14 +691,14 @@ function y(n, e) {
       <strong style="font-size: 16px;">LMS Widget Fail-Fast Collision Error</strong>
     </div>
     <p style="margin: 0;">${e}</p>
-  `, n.appendChild(t);
+  `, o.appendChild(t);
 }
 function x() {
   b.garbageCollect(14);
-  const n = document.querySelectorAll(
+  const o = document.querySelectorAll(
     ".lms-widget-container:not([data-lms-widget-initialized]):not([data-widget-initialized]), .widget-mount-point:not([data-lms-widget-initialized]):not([data-widget-initialized])"
   ), e = [];
-  return n.forEach((t) => {
+  return o.forEach((t) => {
     const s = L(t);
     if (!s) {
       console.error(
@@ -671,57 +718,95 @@ function x() {
       return;
     }
     s.setAttribute("data-lms-widget-bound", "true"), s.setAttribute("data-widget-bound", "true"), t.setAttribute("data-lms-widget-initialized", "true"), t.setAttribute("data-widget-initialized", "true");
-    const r = t.querySelector("[data-lms-widget]"), a = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (r == null ? void 0 : r.hasAttribute("data-lms-widget-show-answerbox")), o = new b(s, {
-      hideTextarea: !a
+    const r = t.querySelector("[data-lms-widget]"), d = t.hasAttribute("data-lms-widget-show-answerbox") || s.hasAttribute("data-lms-widget-show-answerbox") || (r == null ? void 0 : r.hasAttribute("data-lms-widget-show-answerbox")), i = new b(s, {
+      hideTextarea: !d
     }), l = () => {
       var f;
-      let i = null;
-      const d = t.querySelector("[data-lms-widget]");
-      if (d)
-        if (d.hasAttribute("data-lms-widget-show-answerbox") && ((f = o.showTextarea) == null || f.call(o)), d.tagName.toLowerCase() === "iframe") {
-          let h = "*";
-          const u = d.getAttribute("data-lms-widget-origin") || t.getAttribute("data-lms-widget-origin");
-          if (u)
-            h = u;
-          else if (d.hasAttribute("src"))
+      let n = null;
+      const a = t.querySelector("[data-lms-widget]");
+      if (a)
+        if (a.hasAttribute("data-lms-widget-show-answerbox") && ((f = i.showTextarea) == null || f.call(i)), a.tagName.toLowerCase() === "iframe") {
+          let u = "*";
+          const g = a.getAttribute("data-lms-widget-origin") || t.getAttribute("data-lms-widget-origin");
+          if (g)
+            u = g;
+          else if (a.hasAttribute("src"))
             try {
-              h = new URL(d.getAttribute("src") || "", window.location.href).origin;
+              u = new URL(a.getAttribute("src") || "", window.location.href).origin;
             } catch {
             }
-          i = new S(d, h);
+          n = new T(a, u);
         } else
-          i = new A(d);
-      if (i) {
-        const h = E(t, s), u = new T(t, o, i, { runMode: h }), p = u.destroy.bind(u);
-        return u.destroy = () => {
+          n = new S(a);
+      if (n) {
+        const u = E(t, s), g = new A(t, i, n, { runMode: u }), p = g.destroy.bind(g);
+        return g.destroy = () => {
           p();
-          const w = m.indexOf(u);
+          const w = m.indexOf(g);
           w > -1 && m.splice(w, 1);
-        }, e.push(u), m.push(u), !0;
+        }, e.push(g), m.push(g), !0;
       }
       return !1;
     };
     if (!l()) {
-      let i = t.querySelector(
+      let n = t.querySelector(
         ".lms-widget-placeholder, .widget-placeholder, [data-lms-widget-placeholder]"
       );
-      i ? i.innerHTML = "Loading answer box..." : (i = document.createElement("div"), i.className = "lms-widget-placeholder widget-placeholder", i.innerHTML = "Loading answer box...", i.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(i)), new MutationObserver((f, h) => {
-        l() && (h.disconnect(), i && i.parentNode && i.parentNode.removeChild(i));
+      n ? n.innerHTML = "Loading answer box..." : (n = document.createElement("div"), n.className = "lms-widget-placeholder widget-placeholder", n.innerHTML = "Loading answer box...", n.style.cssText = "padding: 20px; text-align: center; color: #64748b; font-family: sans-serif; font-size: 14px;", t.appendChild(n)), new MutationObserver((f, u) => {
+        l() && (u.disconnect(), n && n.parentNode && n.parentNode.removeChild(n));
       }).observe(t, { childList: !0, subtree: !0 });
     }
-  }), e;
+  }), M(), e;
+}
+function M() {
+  document.querySelectorAll("[data-lms-template-code], [data-lms-template-content]").forEach((e) => {
+    if (e.hasAttribute("data-lms-template-bound")) return;
+    e.setAttribute("data-lms-template-bound", "true");
+    const t = e.getAttribute("data-lms-template-code") || e.getAttribute("data-lms-template-content"), s = e.getAttribute("data-lms-template-label") || "✨ Use this code", r = document.createElement("button");
+    r.type = "button", r.className = "lms-widget-template-btn", r.innerHTML = s, r.style.cssText = "display: inline-block; margin-top: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 4px; transition: background 0.2s;", r.addEventListener("mouseenter", () => r.style.background = "#c7d2fe"), r.addEventListener("mouseleave", () => r.style.background = "#e0e7ff"), r.addEventListener("click", (d) => {
+      var l;
+      d.preventDefault();
+      let i;
+      if (t && t !== "true" && t !== "")
+        try {
+          const n = document.querySelector(t);
+          n && (i = m.find(
+            (a) => a.getMountPoint() === n || a.getMountPoint().contains(n) || a.getMountPoint().getAttribute("data-target-textarea") === t || a.getMountPoint().getAttribute("data-lms-target-textarea") === t
+          ), !i && ((l = n.tagName) == null ? void 0 : l.toLowerCase()) === "textarea" && (i = m.find((a) => {
+            const f = a.getMountPoint(), u = f.getAttribute("data-target-textarea") || f.getAttribute("data-lms-target-textarea");
+            return u && document.querySelector(u) === n;
+          })));
+        } catch {
+        }
+      if (!i) {
+        const n = e.closest(".que, .form-item, .fitem, .felement, form") || e.closest("main, body");
+        n && (i = m.find((a) => n.contains(a.getMountPoint())));
+      }
+      if (!i && m.length > 0 && (i = m[0]), i) {
+        let n = e.innerText !== void 0 ? e.innerText : e.textContent || "";
+        if (e.getAttribute("data-lms-template-newline") !== "false" && !n.endsWith(`
+`) && (n += `
+`), i.insertContent(n)) {
+          const u = r.innerHTML;
+          r.innerHTML = "✅ Inserted!", setTimeout(() => r.innerHTML = u, 1500);
+        }
+      } else
+        console.error("[LMSWidgetManager] Could not find a target widget controller for template injection.");
+    }), e.parentNode && e.parentNode.insertBefore(r, e.nextSibling);
+  });
 }
 typeof window < "u" && typeof document < "u" && (document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => {
   x();
 }) : x());
 export {
-  A as DOMEventMessengerAdapter,
-  S as IframeMessengerAdapter,
+  S as DOMEventMessengerAdapter,
+  T as IframeMessengerAdapter,
   b as MoodleTextareaAdapter,
-  A as WebComponentMessengerAdapter,
-  T as WidgetController,
-  g as WidgetMessageTypes,
+  S as WebComponentMessengerAdapter,
+  A as WidgetController,
+  h as WidgetMessageTypes,
   m as activeControllers,
+  M as bindTemplateInjectors,
   x as bootstrap,
   E as sniffMoodleContext
 };
